@@ -4,6 +4,10 @@ package Mojo::IOLoop::ReadWriteFork;
 
 Mojo::IOLoop::ReadWriteFork - Fork a process and read/write from it
 
+=head1 VERSION
+
+0.01
+
 =head1 DESCRIPTION
 
 This class enable you to fork children which you can write data to
@@ -47,6 +51,8 @@ use Scalar::Util ();
 use constant CHUNK_SIZE => $ENV{MOJO_CHUNK_SIZE} || 131072;
 use constant DEBUG => $ENV{MOJO_READWRITE_FORK_DEBUG} || 0;
 use constant WAIT_PID_INTERVAL => $ENV{WAIT_PID_INTERVAL} || 0.01;
+
+our $VERSION = '0.01';
 
 =head1 EVENTS
 
