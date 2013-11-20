@@ -3,7 +3,7 @@ use Mojo::IOLoop::ReadWriteFork;
 
 # NOTE!
 # THIS APPLICATION IS A BAD IDEA.
-# IT SHOULD ONLY SERVER AS AN EXAMPLE.
+# IT SHOULD ONLY SERVE AS AN EXAMPLE.
 
 get '/tail/:name', sub {
   my $self = shift->render_later;

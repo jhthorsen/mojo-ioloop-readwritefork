@@ -1,4 +1,8 @@
 Revision history for Mojo-IOLoop-ReadWriteFork
 
+0.02     Wed Nov 20 11:36:38 2013
+       * Add example/tail.pl
+       * Fix failing t/bash.t
+
 0.01     Wed Nov 20 10:25:19 2013
        * First release on CPAN
