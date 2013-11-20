@@ -40,6 +40,7 @@ plan tests => 10;
   memory_cycle_ok $run, 'no cycle after start()';
   is $run->pid, 0, 'no pid' or diag $run->pid;
   Mojo::IOLoop->timer(0.1, sub { $run->write("hello world\n\x04") });
+  Mojo::IOLoop->timer(3 => sub { Mojo::IOLoop->stop }); # guard
   Mojo::IOLoop->start;
   memory_cycle_ok $run, 'no cycle after Mojo::IOLoop->start';
 

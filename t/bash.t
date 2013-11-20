@@ -38,6 +38,7 @@ plan tests => 4;
   }
 
   is $run->pid, 0, 'no pid' or diag $run->pid;
+  Mojo::IOLoop->timer(3 => sub { Mojo::IOLoop->stop }); # guard
   Mojo::IOLoop->start;
   like $run->pid, qr{^[1-9]\d+$}, 'got pid' or diag $run->pid;
   like $output, qr/^too cool foo bar baz\W{1,2}$/, 'got stdout from "echo"' or diag $output;

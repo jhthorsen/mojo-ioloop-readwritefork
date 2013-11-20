@@ -227,7 +227,6 @@ sub _setup_recurring_child_alive_check {
       my $obj = $reactor->{forks}{$pid} || {};
 
       if(waitpid($pid, WNOHANG) <= 0) {
-        $obj->{stop} or next;
         # NOTE: cannot use kill() to check if the process is alive, since
         # the process might be owned by another user.
         -d "/proc/$pid" and next;
