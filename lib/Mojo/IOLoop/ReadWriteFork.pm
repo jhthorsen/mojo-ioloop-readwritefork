@@ -18,6 +18,8 @@ and STDOUT are more than welcome.
 
 =head1 SYNOPSIS
 
+=head2 Standalone
+
   my $fork = Mojo::IOLoop::ReadWriteFork->new;
   my $cat_result = '';
 
@@ -40,6 +42,10 @@ and STDOUT are more than welcome.
     program_args => [ '-' ],
     conduit => 'pty',
   );
+
+=head2 In a Mojolicios::Controller
+
+See L<https://github.com/jhthorsen/mojo-ioloop-readwritefork/tree/master/example/tail.pl>.
 
 =cut
 
