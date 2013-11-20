@@ -1,0 +1,83 @@
+NAME
+    Mojo::IOLoop::ReadWriteFork - Fork a process and read/write from it
+
+DESCRIPTION
+    This class enable you to fork children which you can write data to and
+    emit events when the child prints to STDERR or STDOUT.
+
+    Patches that enable the "read" event to see the difference between
+    STDERR and STDOUT are more than welcome.
+
+SYNOPSIS
+      my $fork = Mojo::IOLoop::ReadWriteFork->new;
+      my $cat_result = '';
+
+      $fork->on(error => sub {
+        my($fork, $error) = @_;
+        warn $error;
+      });
+      $fork->on(close => sub {
+        my($fork, $exit_value, $signal) = @_;
+        warn "got close event";
+        Mojo::IOLoop->stop;
+      });
+      $fork->on(read => sub {
+        my($fork, $buffer) = @_; # $buffer = both STDERR and STDOUT
+        $cat_result .= $buffer;
+      });
+
+      $fork->start(
+        program => 'cat',
+        program_args => [ '-' ],
+        conduit => 'pty',
+      );
+
+EVENTS
+  close
+    Emitted when the child process exit.
+
+  error
+    Emitted when when the there is an issue with creating, writing or
+    reading from the child process.
+
+  read
+    Emitted when the child has written a chunk of data to STDOUT or STDERR.
+
+ATTRIBUTES
+  pid
+    Holds the child process ID.
+
+  reactor
+    Holds a Mojo::Reactor object. Default is:
+
+      Mojo::IOLoop->singleton->reactor;
+
+METHODS
+  start
+      $self->start(
+        program => $str,
+        program_args => [@str],
+        conduit => $str, # pipe or pty
+        raw => $bool,
+        clone_winsize_from => \*STDIN,
+      );
+
+    Used to fork and exec a child process.
+
+    raw and "clone_winsize_from|IO::Pty" only makes sense if "conduit" is
+    "pty".
+
+  write
+      $self->write($buffer);
+
+    Used to write data to the child process.
+
+  kill
+      $bool = $self->kill;
+      $bool = $self->kill(15); # default
+
+    Used to signal the child.
+
+AUTHOR
+    Jan Henning Thorsen - "jhthorsen@cpan.org"
+

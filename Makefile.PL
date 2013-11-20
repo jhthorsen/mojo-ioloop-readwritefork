@@ -10,6 +10,7 @@ WriteMakefile(
     'IO::Pty' => '1.10',
   },
   BUILD_REQUIRES => {
+    'Test::Memory::Cycle' => '1.04',
     'Test::More' => '0.90',
   },
   META_MERGE => {
