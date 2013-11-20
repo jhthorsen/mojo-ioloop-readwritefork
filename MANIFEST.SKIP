@@ -1,0 +1,10 @@
+^mypp.yml
+.git
+\.old
+\.swp
+~$
+^blib/
+^Makefile$
+^MANIFEST.*
+^MYMETA*
+^Mojo-IOLoop-ReadWriteFork
