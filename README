@@ -2,7 +2,7 @@ NAME
     Mojo::IOLoop::ReadWriteFork - Fork a process and read/write from it
 
 VERSION
-    0.03
+    0.04
 
 DESCRIPTION
     This class enable you to fork children which you can write data to and
@@ -31,8 +31,8 @@ SYNOPSIS
       });
 
       $fork->start(
-        program => 'cat',
-        program_args => [ '-' ],
+        program => 'bash',
+        program_args => [ -c => 'echo $YIKES foo bar baz' ],
         conduit => 'pty',
       );
 
@@ -63,6 +63,11 @@ ATTRIBUTES
 
 METHODS
   start
+      $self->start(
+        program => sub { my @program_args = @_; ... },
+        program_args => [ @data ],
+      );
+
       $self->start(
         program => $str,
         program_args => [@str],

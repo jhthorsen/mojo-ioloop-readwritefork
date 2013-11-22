@@ -1,5 +1,9 @@
 Revision history for Mojo-IOLoop-ReadWriteFork
 
+0.04     Fri Nov 22 19:52:52 2013
+       * Add support for callbacks
+       * Fix failing tests
+
 0.03     Fri Nov 22 08:35:43 2013
        * A bit more relaxed test for cat.t: Running it on BSD results in
          "^D&#8;&#8;" at the end.

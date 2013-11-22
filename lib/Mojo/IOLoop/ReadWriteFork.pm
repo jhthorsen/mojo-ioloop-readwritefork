@@ -6,7 +6,7 @@ Mojo::IOLoop::ReadWriteFork - Fork a process and read/write from it
 
 =head1 VERSION
 
-0.03
+0.04
 
 =head1 DESCRIPTION
 
@@ -38,8 +38,8 @@ and STDOUT are more than welcome.
   });
 
   $fork->start(
-    program => 'cat',
-    program_args => [ '-' ],
+    program => 'bash',
+    program_args => [ -c => 'echo $YIKES foo bar baz' ],
     conduit => 'pty',
   );
 
@@ -58,7 +58,7 @@ use constant CHUNK_SIZE => $ENV{MOJO_CHUNK_SIZE} || 131072;
 use constant DEBUG => $ENV{MOJO_READWRITE_FORK_DEBUG} || 0;
 use constant WAIT_PID_INTERVAL => $ENV{WAIT_PID_INTERVAL} || 0.01;
 
-our $VERSION = '0.03';
+our $VERSION = '0.04';
 
 =head1 EVENTS
 
@@ -101,6 +101,11 @@ has reactor => sub {
 =head1 METHODS
 
 =head2 start
+
+  $self->start(
+    program => sub { my @program_args = @_; ... },
+    program_args => [ @data ],
+  );
 
   $self->start(
     program => $str,
@@ -198,9 +203,6 @@ sub _start {
     warn "[$$] Starting $args->{program} @{ $args->{program_args} }\n" if DEBUG;
     close $stdin_write;
     close $stdout_read;
-    close STDIN;
-    close STDOUT;
-    close STDERR;
     open STDIN, '<&' . fileno $stdin_read or die $!;
     open STDOUT, '>&' . fileno $stdout_write or die $!;
     open STDERR, '>&' . fileno $stdout_write or die $!;
@@ -211,6 +213,7 @@ sub _start {
 
     if(ref $args->{program} eq 'CODE') {
       $args->{program}->(@{ $args->{program_args} });
+      exit 0;
     }
     else {
       exec $args->{program}, @{ $args->{program_args} };
@@ -260,8 +263,9 @@ sub write {
   my($self, $buffer) = @_;
 
   $self->{stdin_write} or return;
-  warn "[${ \$self->pid }] Write buffer (" .url_escape($buffer) .")\n" if DEBUG;
   print { $self->{stdin_write} } $buffer;
+  $self->{stdin_write}->flush or die "Write buffer (" .url_escape($buffer) .") failed: $!";
+  warn "[${ \$self->pid }] Wrote buffer (" .url_escape($buffer) .")\n" if DEBUG;
 }
 
 =head2 kill

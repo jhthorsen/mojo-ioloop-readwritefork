@@ -33,7 +33,7 @@ plan tests => 4;
     $run->start(
       program => 'bash',
       program_args => [ -c => 'echo $YIKES foo bar baz' ],
-      conduit => 'pipe',
+      conduit => 'pty',
     );
   }
 
