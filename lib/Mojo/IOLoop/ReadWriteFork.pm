@@ -6,7 +6,7 @@ Mojo::IOLoop::ReadWriteFork - Fork a process and read/write from it
 
 =head1 VERSION
 
-0.02
+0.03
 
 =head1 DESCRIPTION
 
@@ -58,7 +58,7 @@ use constant CHUNK_SIZE => $ENV{MOJO_CHUNK_SIZE} || 131072;
 use constant DEBUG => $ENV{MOJO_READWRITE_FORK_DEBUG} || 0;
 use constant WAIT_PID_INTERVAL => $ENV{WAIT_PID_INTERVAL} || 0.01;
 
-our $VERSION = '0.02';
+our $VERSION = '0.03';
 
 =head1 EVENTS
 

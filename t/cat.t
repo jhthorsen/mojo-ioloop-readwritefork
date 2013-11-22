@@ -45,6 +45,6 @@ plan tests => 10;
   memory_cycle_ok $run, 'no cycle after Mojo::IOLoop->start';
 
   like $run->pid, qr{^[1-9]\d+$}, 'got pid' or diag $run->pid;
-  like $output, qr/^hello world\W{1,2}hello world\W{1,2}$/, 'got stdout from "cat -"' or diag $output;
+  like $output, qr/^hello world\W{1,2}hello world\W{1,2}/, 'got stdout from "cat -"' or diag $output;
   is $closed, 1, "got close event";
 }
