@@ -1,5 +1,8 @@
 Revision history for Mojo-IOLoop-ReadWriteFork
 
+0.05     Wed Feb 19 13:29:54 2014
+       * Fix "read" event cannot change ERRNO from sysread()
+
 0.04     Fri Nov 22 19:52:52 2013
        * Add support for callbacks
        * Fix failing tests

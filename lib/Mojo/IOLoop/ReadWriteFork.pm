@@ -6,7 +6,7 @@ Mojo::IOLoop::ReadWriteFork - Fork a process and read/write from it
 
 =head1 VERSION
 
-0.04
+0.05
 
 =head1 DESCRIPTION
 
@@ -58,7 +58,7 @@ use constant CHUNK_SIZE => $ENV{MOJO_CHUNK_SIZE} || 131072;
 use constant DEBUG => $ENV{MOJO_READWRITE_FORK_DEBUG} || 0;
 use constant WAIT_PID_INTERVAL => $ENV{WAIT_PID_INTERVAL} || 0.01;
 
-our $VERSION = '0.04';
+our $VERSION = '0.05';
 
 =head1 EVENTS
 
@@ -179,14 +179,14 @@ sub _start {
       $self->_read;
 
       # 5 = Input/output error
-      if($! == 5) {
-        warn "[$pid] Ignoring child after $!\n" if DEBUG;
+      if($self->{errno} == 5) {
+        warn "[$pid] Ignoring child after $self->{errno}\n" if DEBUG;
         $self->kill;
         $self->{stop}++;
       }
-      elsif($!) {
-        warn "[$pid] Child $!\n" if DEBUG;
-        $self->emit_safe(error => "Read error: $!");
+      elsif($self->{errno}) {
+        warn "[$pid] Child $self->{errno}\n" if DEBUG;
+        $self->emit_safe(error => "Read error: $self->{errno}");
       }
     });
     $self->reactor->watch($stdout_read, 1, 0);
@@ -301,6 +301,8 @@ sub _read {
   my $self = shift;
   my $stdout_read = $self->{stdout_read} or return;
   my $read = $stdout_read->sysread(my $buffer, CHUNK_SIZE, 0);
+
+  $self->{errno} = $!;
 
   return unless defined $read;
   return unless $read;
