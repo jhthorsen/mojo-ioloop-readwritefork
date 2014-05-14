@@ -1,5 +1,8 @@
 Revision history for Mojo-IOLoop-ReadWriteFork
 
+0.06
+       * Fix "Use of uninitialized value in numeric eq (==) at ReadWriteFork.pm line 182."
+
 0.05     Wed Feb 19 13:29:54 2014
        * Fix "read" event cannot change ERRNO from sysread()
 

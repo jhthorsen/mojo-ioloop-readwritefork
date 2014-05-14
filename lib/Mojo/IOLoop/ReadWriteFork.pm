@@ -127,6 +127,7 @@ sub start {
   my $args = ref $_[0] ? $_[0] : {@_};
 
   $args->{env} = { %ENV };
+  $self->{errno} = 0;
   $args->{program} or die 'program is required input';
   $args->{conduit} ||= 'pipe';
   $args->{program_args} ||= [];
@@ -302,7 +303,7 @@ sub _read {
   my $stdout_read = $self->{stdout_read} or return;
   my $read = $stdout_read->sysread(my $buffer, CHUNK_SIZE, 0);
 
-  $self->{errno} = $!;
+  $self->{errno} = $! // 0;
 
   return unless defined $read;
   return unless $read;
