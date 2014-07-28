@@ -5,6 +5,7 @@ Revision history for Mojo-IOLoop-ReadWriteFork
        * Add support for write() before child process has started
        * Add support for "drain" callback to write()
        * Add run(). a simpler version start()
+       * Add support for closing STDIN
 
 0.05     Wed Feb 19 13:29:54 2014
        * Fix "read" event cannot change ERRNO from sysread()

@@ -100,6 +100,34 @@ has reactor => sub {
 
 =head1 METHODS
 
+=head2 close
+
+  $self = $self->close("stdin");
+
+Close STDIN stream to the child process immediately.
+
+=cut
+
+sub close {
+  my ($self, $what) = @_;
+  $self->{stream}{$what}->close if ref $self->{stream}{$what};
+  $self;
+}
+
+=head2 close_gracefully
+
+  $self = $self->close_gracefully("stdin");
+
+Close STDIN to the child process stream gracefully.
+
+=cut
+
+sub close_gracefully {
+  my ($self, $what) = @_;
+  $self->{stream}{$what}->close_gracefully if ref $self->{stream}{$what};
+  $self;
+}
+
 =head2 run
 
   $self = $self->run($program, @program_args);
@@ -288,8 +316,8 @@ Example:
 sub write {
   my $self = shift;
 
-  if ($self->{stdin}) {
-    $self->{stdin}->write(@_);
+  if ($self->{stream}{stdin}) {
+    $self->{stream}{stdin}->write(@_);
     warn "[${ \$self->pid }] Wrote buffer (" .url_escape($_[0]) .")\n" if DEBUG;
   }
   else {
@@ -326,7 +354,7 @@ sub _cleanup {
   $reactor->remove(delete $self->{stdout_read}) if $self->{stdout_read};
   $reactor->remove(delete $self->{delay}) if $self->{delay};
   $reactor->remove(delete $self->{delay}) if $self->{delay};
-  $self->{stdin}->close if $self->{stdin};
+  delete($self->{stream}{stdin})->close if $self->{stream}{stdin};
 }
 
 sub _read {
@@ -351,7 +379,7 @@ sub _stdin {
   $stream->timeout(0);
   $stream->start;
 
-  $self->{stdin} = $stream;
+  $self->{stream}{stdin} = $stream;
   $self->write(@$_) for @{ delete $self->{stdin_buffer} || [] };
 }
 
