@@ -246,8 +246,8 @@ sub _start {
     }
 
     warn "[$$] Starting $args->{program} @{ $args->{program_args} }\n" if DEBUG;
-    close $stdin_write;
-    close $stdout_read;
+    CORE::close($stdin_write);
+    CORE::close($stdout_read);
     open STDIN, '<&' . fileno $stdin_read or die $!;
     open STDOUT, '>&' . fileno $stdout_write or die $!;
     open STDERR, '>&' . fileno $stdout_write or die $!;
