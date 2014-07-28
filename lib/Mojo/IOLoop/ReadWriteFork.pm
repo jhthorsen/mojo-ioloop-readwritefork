@@ -100,6 +100,21 @@ has reactor => sub {
 
 =head1 METHODS
 
+=head2 run
+
+  $self = $self->run($program, @program_args);
+
+Simpler version of L</start>.
+
+=cut
+
+sub run {
+  my ($self, $program, @program_args) = @_;
+
+  $self->start(program => $program, program_args => \@program_args);
+  $self;
+}
+
 =head2 start
 
   $self->start(
