@@ -167,9 +167,10 @@ sub _start {
   elsif($pid) { # parent ===================================================
     warn "[$pid] Child starting ($args->{program} @{$args->{program_args}})\n" if DEBUG;
     $self->{pid} = $pid;
-    $self->{stdin_write} = $stdin_write;
     $self->{stdout_read} = $stdout_read;
     $stdout_read->close_slave if defined $stdout_read and UNIVERSAL::isa($stdout_read, 'IO::Pty');
+
+    $self->_stdin($stdin_write);
 
     Scalar::Util::weaken($self);
     $self->reactor->io($stdout_read => sub {
@@ -254,19 +255,33 @@ sub _setup_recurring_child_alive_check {
 
 =head2 write
 
-  $self->write($buffer);
+  $self = $self->write($chunk);
+  $self = $self->write($chunk, $cb);
 
-Used to write data to the child process.
+Used to write data to the child process STDIN. An optional callback will be
+called once STDIN is drained.
+
+Example:
+
+  $self->write("some data\n", sub {
+    my ($self) = @_;
+    $self->close_gracefully;
+  });
 
 =cut
 
 sub write {
-  my($self, $buffer) = @_;
+  my $self = shift;
 
-  $self->{stdin_write} or return;
-  print { $self->{stdin_write} } $buffer;
-  $self->{stdin_write}->flush or die "Write buffer (" .url_escape($buffer) .") failed: $!";
-  warn "[${ \$self->pid }] Wrote buffer (" .url_escape($buffer) .")\n" if DEBUG;
+  if ($self->{stdin}) {
+    $self->{stdin}->write(@_);
+    warn "[${ \$self->pid }] Wrote buffer (" .url_escape($_[0]) .")\n" if DEBUG;
+  }
+  else {
+    push @{ $self->{stdin_buffer} }, [@_];
+  }
+
+  $self;
 }
 
 =head2 kill
@@ -295,7 +310,8 @@ sub _cleanup {
   $reactor->watch($self->{stdout_read}, 0, 0) if $self->{stdout_read};
   $reactor->remove(delete $self->{stdout_read}) if $self->{stdout_read};
   $reactor->remove(delete $self->{delay}) if $self->{delay};
-  $reactor->remove(delete $self->{stdin_write}) if $self->{stdin_write};
+  $reactor->remove(delete $self->{delay}) if $self->{delay};
+  $self->{stdin}->close if $self->{stdin};
 }
 
 sub _read {
@@ -309,6 +325,19 @@ sub _read {
   return unless $read;
   warn "[$self->{pid}] Got buffer (" .url_escape($buffer) .")\n" if DEBUG;
   $self->emit_safe(read => $buffer);
+}
+
+sub _stdin {
+  my ($self, $handle) = @_;
+  my $stream = Mojo::IOLoop::Stream->new($handle);
+
+  Scalar::Util::weaken($self);
+  $stream->reactor($self->reactor);
+  $stream->timeout(0);
+  $stream->start;
+
+  $self->{stdin} = $stream;
+  $self->write(@$_) for @{ delete $self->{stdin_buffer} || [] };
 }
 
 sub DESTROY { shift->_cleanup }
