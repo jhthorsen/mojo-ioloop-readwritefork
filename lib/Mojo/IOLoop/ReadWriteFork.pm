@@ -375,6 +375,7 @@ sub _stdin {
   my $stream = Mojo::IOLoop::Stream->new($handle);
 
   Scalar::Util::weaken($self);
+  $stream->on(error => sub { $! == 9 ? shift->close : return $self->emit(error => $_[1]); });
   $stream->reactor($self->reactor);
   $stream->timeout(0);
   $stream->start;

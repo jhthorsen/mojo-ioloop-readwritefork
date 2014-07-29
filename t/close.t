@@ -8,6 +8,7 @@ use Test::Memory::Cycle;
   my $output = '';
 
   $run->on(close => sub { Mojo::IOLoop->stop; });
+  $run->on(error => sub { diag "error: @_" });
   $run->on(read => sub { $output .= $_[1]; });
   $run->write("line one\nline two\n", sub { shift->close('stdin'); });
   $run->run(sub { print while <>; print "FORCE\n"; });
@@ -23,6 +24,7 @@ use Test::Memory::Cycle;
   my $output = '';
 
   $run->on(close => sub { Mojo::IOLoop->stop; });
+  $run->on(error => sub { diag "error: @_" });
   $run->on(read => sub { $output .= $_[1]; shift->close_gracefully('stdin'); });
   $run->write("line one\nline two\n");
   $run->run(sub { print while <>; print "GRACEFUL\n" });
