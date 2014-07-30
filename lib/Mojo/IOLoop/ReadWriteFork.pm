@@ -50,8 +50,9 @@ See L<https://github.com/jhthorsen/mojo-ioloop-readwritefork/tree/master/example
 =cut
 
 use Mojo::Base 'Mojo::EventEmitter';
-use IO::Pty;
 use Mojo::Util 'url_escape';
+use Errno qw( EAGAIN ECONNRESET EINTR EPIPE EWOULDBLOCK );
+use IO::Pty;
 use POSIX ':sys_wait_h';
 use Scalar::Util ();
 use constant CHUNK_SIZE => $ENV{MOJO_CHUNK_SIZE} || 131072;
@@ -109,22 +110,10 @@ Close STDIN stream to the child process immediately.
 =cut
 
 sub close {
-  my ($self, $what) = @_;
-  $self->{stream}{$what}->close if ref $self->{stream}{$what};
-  $self;
-}
-
-=head2 close_gracefully
-
-  $self = $self->close_gracefully("stdin");
-
-Close STDIN to the child process stream gracefully.
-
-=cut
-
-sub close_gracefully {
-  my ($self, $what) = @_;
-  $self->{stream}{$what}->close_gracefully if ref $self->{stream}{$what};
+  my $self = shift;
+  my $what = $_[0] eq 'stdout' ? 'stdout_read' : 'stdin_write'; # stdout_read is EXPERIMENTAL
+  my $fh = delete $self->{$what} or return $self;
+  CORE::close($fh) or $self->emit(error => $!);
   $self;
 }
 
@@ -211,9 +200,8 @@ sub _start {
     warn "[$pid] Child starting ($args->{program} @{$args->{program_args}})\n" if DEBUG;
     $self->{pid} = $pid;
     $self->{stdout_read} = $stdout_read;
+    $self->{stdin_write} = $stdin_write;
     $stdout_read->close_slave if defined $stdout_read and UNIVERSAL::isa($stdout_read, 'IO::Pty');
-
-    $self->_stdin($stdin_write);
 
     Scalar::Util::weaken($self);
     $self->reactor->io($stdout_read => sub {
@@ -236,6 +224,7 @@ sub _start {
     });
     $self->reactor->watch($stdout_read, 1, 0);
     $self->_setup_recurring_child_alive_check($pid);
+    $self->_write;
   }
   else { # child ===========================================================
     if($args->{conduit} eq 'pty') {
@@ -308,22 +297,17 @@ Example:
 
   $self->write("some data\n", sub {
     my ($self) = @_;
-    $self->close_gracefully;
+    $self->close;
   });
 
 =cut
 
 sub write {
-  my $self = shift;
+  my ($self, $chunk, $cb) = @_;
 
-  if ($self->{stream}{stdin}) {
-    $self->{stream}{stdin}->write(@_);
-    warn "[${ \$self->pid }] Wrote buffer (" .url_escape($_[0]) .")\n" if DEBUG;
-  }
-  else {
-    push @{ $self->{stdin_buffer} }, [@_];
-  }
-
+  $self->once(drain => $cb) if $cb;
+  $self->{stdin_buffer} .= $chunk;
+  $self->_write if $self->{stdin_write};
   $self;
 }
 
@@ -345,6 +329,11 @@ sub kill {
   kill $signal, $pid;
 }
 
+sub _error {
+  return if $! == EAGAIN || $! == EINTR || $! == EWOULDBLOCK;
+  return $_[0]->kill if $! == ECONNRESET || $! == EPIPE;
+  return $_[0]->emit(error => $!)->kill;
+}
 
 sub _cleanup {
   my $self = shift;
@@ -353,8 +342,6 @@ sub _cleanup {
   $reactor->watch($self->{stdout_read}, 0, 0) if $self->{stdout_read};
   $reactor->remove(delete $self->{stdout_read}) if $self->{stdout_read};
   $reactor->remove(delete $self->{delay}) if $self->{delay};
-  $reactor->remove(delete $self->{delay}) if $self->{delay};
-  delete($self->{stream}{stdin})->close if $self->{stream}{stdin};
 }
 
 sub _read {
@@ -370,18 +357,24 @@ sub _read {
   $self->emit_safe(read => $buffer);
 }
 
-sub _stdin {
-  my ($self, $handle) = @_;
-  my $stream = Mojo::IOLoop::Stream->new($handle);
+sub _write {
+  my $self = shift;
 
-  Scalar::Util::weaken($self);
-  $stream->on(error => sub { $! == 9 ? shift->close : return $self->emit(error => $_[1]); });
-  $stream->reactor($self->reactor);
-  $stream->timeout(0);
-  $stream->start;
+  return unless length $self->{stdin_buffer};
+  my $stdin_write = $self->{stdin_write};
+  my $written = $stdin_write->syswrite($self->{stdin_buffer});
+  return $self->_error unless defined $written;
+  my $chunk = substr $self->{stdin_buffer}, 0, $written, '';
+  warn "[${ \$self->pid }] Wrote buffer (" .url_escape($chunk) .")\n" if DEBUG;
 
-  $self->{stream}{stdin} = $stream;
-  $self->write(@$_) for @{ delete $self->{stdin_buffer} || [] };
+  if (length $self->{stdin_buffer}) {
+    # This is one ugly hack because it does not seem like IO::Pty play
+    # nice with Mojo::Reactor(::EV) ->io(...) and ->watch(...)
+    $self->reactor->timer(0.01 => sub { $self and $self->_write });
+  }
+  else {
+    $self->emit_safe('drain');
+  }
 }
 
 sub DESTROY { shift->_cleanup }
