@@ -7,10 +7,11 @@ use Test::Memory::Cycle;
 $ENV{PATH} ||= '';
 plan skip_all => 'telnet is missing' unless grep { -x "$_/telnet" } split /:/, $ENV{PATH};
 
+my $address = '127.0.0.1';
 my $port = Mojo::IOLoop::Server->generate_port;
 
 # echo server
-Mojo::IOLoop->server({ port => $port }, sub {
+Mojo::IOLoop->server({ address => $address, port => $port }, sub {
   my ($ioloop, $stream) = @_;
   $stream->on(read => sub { $_[0]->write("I heard you say: $_[1]"); });
 });
@@ -30,7 +31,7 @@ Mojo::IOLoop->server({ port => $port }, sub {
 
   $run->start(
     program => 'telnet',
-    program_args => [localhost => $port],
+    program_args => [$address => $port],
     conduit => 'pty',
   );
 

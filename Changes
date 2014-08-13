@@ -1,5 +1,8 @@
 Revision history for Mojo-IOLoop-ReadWriteFork
 
+0.0601
+       * Trying to fix t/telnet.t with 127.0.0.1
+
 0.06     Mon Aug 11 16:59:18 2014
        * Fix "Use of uninitialized value in numeric eq (==) at ReadWriteFork.pm line 182."
        * Add support for write() before child process has started
