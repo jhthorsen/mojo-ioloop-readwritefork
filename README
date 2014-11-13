@@ -2,7 +2,7 @@ NAME
     Mojo::IOLoop::ReadWriteFork - Fork a process and read/write from it
 
 VERSION
-    0.06
+    0.07
 
 DESCRIPTION
     This class enable you to fork children which you can write data to and
