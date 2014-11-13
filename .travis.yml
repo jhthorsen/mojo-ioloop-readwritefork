@@ -5,6 +5,7 @@ perl:
   - "5.10"
 install:
   - "cpanm -n Test::Pod Test::Pod::Coverage"
+  - "cpanm -n --installdeps ."
 script: "perl Makefile.PL && make test"
 notifications:
   email: false
