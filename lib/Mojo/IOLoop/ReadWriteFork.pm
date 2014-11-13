@@ -177,8 +177,8 @@ sub _start {
   my $pid;
 
   if($args->{conduit} eq 'pipe') {
-    pipe $stdout_read, $stdout_write or return $self->emit_safe(error => "pipe: $!");
-    pipe $stdin_read, $stdin_write or return $self->emit_safe(error => "pipe: $!");
+    pipe $stdout_read, $stdout_write or return $self->emit(error => "pipe: $!");
+    pipe $stdin_read, $stdin_write or return $self->emit(error => "pipe: $!");
     select +(select($stdout_write), $| = 1)[0];
     select +(select($stdin_write), $| = 1)[0];
   }
@@ -187,14 +187,14 @@ sub _start {
   }
   else {
     warn "Invalid conduit ($args->{conduit})\n" if DEBUG;
-    return $self->emit_safe(error => "Invalid conduit ($args->{conduit})");
+    return $self->emit(error => "Invalid conduit ($args->{conduit})");
   }
 
   $pid = fork;
 
   if(!defined $pid) {
     warn "Could not fork $!\n" if DEBUG;
-    $self->emit_safe(error => "Couldn't fork ($!)");
+    $self->emit(error => "Couldn't fork ($!)");
   }
   elsif($pid) { # parent ===================================================
     warn "[$pid] Child starting ($args->{program} @{$args->{program_args}})\n" if DEBUG;
@@ -219,7 +219,7 @@ sub _start {
       }
       elsif($self->{errno}) {
         warn "[$pid] Child $self->{errno}\n" if DEBUG;
-        $self->emit_safe(error => "Read error: $self->{errno}");
+        $self->emit(error => "Read error: $self->{errno}");
       }
     });
     $self->reactor->watch($stdout_read, 1, 0);
@@ -279,7 +279,7 @@ sub _setup_recurring_child_alive_check {
       warn "[$pid] Child is dead $exit_value/$signal\n" if DEBUG;
       delete $reactor->{forks}{$pid} or next; # SUPER DUPER IMPORTANT THAT THIS next; IS NOT BEFORE waitpid; ABOVE!
       $obj->_read; # flush the rest
-      $obj->emit_safe(close => $exit_value, $signal);
+      $obj->emit(close => $exit_value, $signal);
       $obj->_cleanup;
     }
   });
@@ -354,7 +354,7 @@ sub _read {
   return unless defined $read;
   return unless $read;
   warn "[$self->{pid}] Got buffer (" .url_escape($buffer) .")\n" if DEBUG;
-  $self->emit_safe(read => $buffer);
+  $self->emit(read => $buffer);
 }
 
 sub _write {
@@ -373,7 +373,7 @@ sub _write {
     $self->reactor->timer(0.01 => sub { $self and $self->_write });
   }
   else {
-    $self->emit_safe('drain');
+    $self->emit('drain');
   }
 }
 
