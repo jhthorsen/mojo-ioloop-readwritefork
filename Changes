@@ -1,5 +1,8 @@
 Revision history for Mojo-IOLoop-ReadWriteFork
 
+0.08     Sun Nov 16 14:16:47 2014
+       * Trying to fix t/telnet.t with localhost
+
 0.07     Thu Nov 13 18:52:55 2014
        * Trying to fix t/telnet.t with 127.0.0.1
        * Mojo::EventEmitter::emit_safe is DEPRECATED

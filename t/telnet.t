@@ -7,13 +7,16 @@ use Test::Memory::Cycle;
 $ENV{PATH} ||= '';
 plan skip_all => 'telnet is missing' unless grep { -x "$_/telnet" } split /:/, $ENV{PATH};
 
-my $address = '127.0.0.1';
+my $address = 'localhost';
 my $port = Mojo::IOLoop::Server->generate_port;
 
 # echo server
 Mojo::IOLoop->server({ address => $address, port => $port }, sub {
   my ($ioloop, $stream) = @_;
-  $stream->on(read => sub { $_[0]->write("I heard you say: $_[1]"); });
+  $stream->on(read => sub {
+    my ($stream, $chunk) = @_;
+    diag "server<<<($chunk)";
+    $stream->write("I heard you say: $chunk"); });
 });
 
 {
@@ -24,6 +27,7 @@ Mojo::IOLoop->server({ address => $address, port => $port }, sub {
   $run->on(close => sub { Mojo::IOLoop->stop; });
   $run->on(read => sub {
     my ($run, $chunk) = @_;
+    diag "client<<<($chunk)";
     $run->write("hey\n", sub { $drain++; }) if $chunk =~ /Connected/;
     $run->kill if $chunk =~ /I heard you say: hey/;
     $output .= $chunk;
@@ -35,7 +39,7 @@ Mojo::IOLoop->server({ address => $address, port => $port }, sub {
     conduit => 'pty',
   );
 
-  #Mojo::IOLoop->timer(2 => sub { Mojo::IOLoop->stop }); # guard
+  Mojo::IOLoop->timer(2 => sub { Mojo::IOLoop->stop }); # guard
   Mojo::IOLoop->start;
   like $output, qr{Connected}, 'Connected';
   like $output, qr{I heard you say: hey}, 'got echo';
