@@ -1,6 +1,6 @@
 Revision history for Mojo-IOLoop-ReadWriteFork
 
-0.09
+0.09     Wed Nov 19 15:35:36 2014
        * Trying to fix t/telnet.t with \r\n on BSD
 
 0.08     Sun Nov 16 14:16:47 2014
