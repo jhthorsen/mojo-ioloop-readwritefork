@@ -55,9 +55,9 @@ use Errno qw( EAGAIN ECONNRESET EINTR EPIPE EWOULDBLOCK );
 use IO::Pty;
 use POSIX ':sys_wait_h';
 use Scalar::Util ();
-use constant CHUNK_SIZE => $ENV{MOJO_CHUNK_SIZE} || 131072;
-use constant DEBUG => $ENV{MOJO_READWRITE_FORK_DEBUG} || 0;
-use constant WAIT_PID_INTERVAL => $ENV{WAIT_PID_INTERVAL} || 0.01;
+use constant CHUNK_SIZE        => $ENV{MOJO_CHUNK_SIZE}           || 131072;
+use constant DEBUG             => $ENV{MOJO_READWRITE_FORK_DEBUG} || 0;
+use constant WAIT_PID_INTERVAL => $ENV{WAIT_PID_INTERVAL}         || 0.01;
 
 our $VERSION = '0.09';
 
@@ -65,14 +65,20 @@ our $VERSION = '0.09';
 
 =head2 close
 
+  $self->emit(close => sub { my($self, $exit_value, $signal) = @_; });
+
 Emitted when the child process exit.
 
 =head2 error
+
+  $self->emit(close => sub { my($self, $str) = @_; });
 
 Emitted when when the there is an issue with creating, writing or reading
 from the child process.
 
 =head2 read
+
+  $self->emit(close => sub { my($self, $chunk) = @_; });
 
 Emitted when the child has written a chunk of data to STDOUT or STDERR.
 
@@ -111,8 +117,8 @@ Close STDIN stream to the child process immediately.
 
 sub close {
   my $self = shift;
-  my $what = $_[0] eq 'stdout' ? 'stdout_read' : 'stdin_write'; # stdout_read is EXPERIMENTAL
-  my $fh = delete $self->{$what} or return $self;
+  my $what = $_[0] eq 'stdout' ? 'stdout_read' : 'stdin_write';    # stdout_read is EXPERIMENTAL
+  my $fh   = delete $self->{$what} or return $self;
   CORE::close($fh) or $self->emit(error => $!);
   $self;
 }
@@ -158,7 +164,7 @@ sub start {
   my $self = shift;
   my $args = ref $_[0] ? $_[0] : {@_};
 
-  $args->{env} = { %ENV };
+  $args->{env}   = {%ENV};
   $self->{errno} = 0;
   $args->{program} or die 'program is required input';
   $args->{conduit} ||= 'pipe';
@@ -170,20 +176,20 @@ sub start {
 }
 
 sub _start {
-  local($?, $!);
-  my($self, $args) = @_;
-  my($stdout_read, $stdout_write);
-  my($stdin_read, $stdin_write);
+  local ($?, $!);
+  my ($self, $args) = @_;
+  my ($stdout_read, $stdout_write);
+  my ($stdin_read,  $stdin_write);
   my $pid;
 
-  if($args->{conduit} eq 'pipe') {
+  if ($args->{conduit} eq 'pipe') {
     pipe $stdout_read, $stdout_write or return $self->emit(error => "pipe: $!");
-    pipe $stdin_read, $stdin_write or return $self->emit(error => "pipe: $!");
+    pipe $stdin_read,  $stdin_write  or return $self->emit(error => "pipe: $!");
     select +(select($stdout_write), $| = 1)[0];
-    select +(select($stdin_write), $| = 1)[0];
+    select +(select($stdin_write),  $| = 1)[0];
   }
-  elsif($args->{conduit} eq 'pty') {
-    $stdin_write = $stdout_read = IO::Pty->new
+  elsif ($args->{conduit} eq 'pty') {
+    $stdin_write = $stdout_read = IO::Pty->new;
   }
   else {
     warn "Invalid conduit ($args->{conduit})\n" if DEBUG;
@@ -192,42 +198,44 @@ sub _start {
 
   $pid = fork;
 
-  if(!defined $pid) {
+  if (!defined $pid) {
     warn "Could not fork $!\n" if DEBUG;
     $self->emit(error => "Couldn't fork ($!)");
   }
-  elsif($pid) { # parent ===================================================
+  elsif ($pid) {    # parent ===================================================
     warn "[$pid] Child starting ($args->{program} @{$args->{program_args}})\n" if DEBUG;
-    $self->{pid} = $pid;
+    $self->{pid}         = $pid;
     $self->{stdout_read} = $stdout_read;
     $self->{stdin_write} = $stdin_write;
     $stdout_read->close_slave if defined $stdout_read and UNIVERSAL::isa($stdout_read, 'IO::Pty');
 
     Scalar::Util::weaken($self);
-    $self->reactor->io($stdout_read => sub {
-      $self->{stop} and return;
-      local($?, $!);
-      my $reactor = shift;
+    $self->reactor->io(
+      $stdout_read => sub {
+        $self->{stop} and return;
+        local ($?, $!);
+        my $reactor = shift;
 
-      $self->_read;
+        $self->_read;
 
-      # 5 = Input/output error
-      if($self->{errno} == 5) {
-        warn "[$pid] Ignoring child after $self->{errno}\n" if DEBUG;
-        $self->kill;
-        $self->{stop}++;
+        # 5 = Input/output error
+        if ($self->{errno} == 5) {
+          warn "[$pid] Ignoring child after $self->{errno}\n" if DEBUG;
+          $self->kill;
+          $self->{stop}++;
+        }
+        elsif ($self->{errno}) {
+          warn "[$pid] Child $self->{errno}\n" if DEBUG;
+          $self->emit(error => "Read error: $self->{errno}");
+        }
       }
-      elsif($self->{errno}) {
-        warn "[$pid] Child $self->{errno}\n" if DEBUG;
-        $self->emit(error => "Read error: $self->{errno}");
-      }
-    });
+    );
     $self->reactor->watch($stdout_read, 1, 0);
     $self->_setup_recurring_child_alive_check($pid);
     $self->_write;
   }
-  else { # child ===========================================================
-    if($args->{conduit} eq 'pty') {
+  else {    # child ===========================================================
+    if ($args->{conduit} eq 'pty') {
       $stdin_write->make_slave_controlling_terminal;
       $stdin_read = $stdout_write = $stdin_write->slave;
       $stdin_read->set_raw if $args->{raw};
@@ -237,52 +245,59 @@ sub _start {
     warn "[$$] Starting $args->{program} @{ $args->{program_args} }\n" if DEBUG;
     CORE::close($stdin_write);
     CORE::close($stdout_read);
-    open STDIN, '<&' . fileno $stdin_read or die $!;
+    open STDIN,  '<&' . fileno $stdin_read   or die $!;
     open STDOUT, '>&' . fileno $stdout_write or die $!;
     open STDERR, '>&' . fileno $stdout_write or die $!;
-    select STDERR; $| = 1;
-    select STDOUT; $| = 1;
+    select STDERR;
+    $| = 1;
+    select STDOUT;
+    $| = 1;
 
-    $ENV{$_} = $args->{env}{$_} for keys %{ $args->{env} };
+    $ENV{$_} = $args->{env}{$_} for keys %{$args->{env}};
 
-    if(ref $args->{program} eq 'CODE') {
-      $args->{program}->(@{ $args->{program_args} });
+    if (ref $args->{program} eq 'CODE') {
+      $args->{program}->(@{$args->{program_args}});
       exit 0;
     }
     else {
-      exec $args->{program}, @{ $args->{program_args} };
+      exec $args->{program}, @{$args->{program_args}};
     }
   }
 }
 
 sub _setup_recurring_child_alive_check {
-  my($self, $pid) = @_;
+  my ($self, $pid) = @_;
   my $reactor = $self->reactor;
 
   $reactor->{forks}{$pid} = $self;
   Scalar::Util::weaken($reactor->{forks}{$pid});
-  $reactor->{fork_watcher} ||= $reactor->recurring(WAIT_PID_INTERVAL, sub {
-    my $reactor = shift;
+  $reactor->{fork_watcher} ||= $reactor->recurring(
+    WAIT_PID_INTERVAL,
+    sub {
+      my $reactor = shift;
 
-    for my $pid (keys %{ $reactor->{forks} }) {
-      local($?, $!);
-      local $SIG{CHLD} = 'DEFAULT'; # no idea why i need to do this, but it seems like waitpid() below return -1 if not
-      my $obj = $reactor->{forks}{$pid} || {};
+      for my $pid (keys %{$reactor->{forks}}) {
+        local ($?, $!);
+        local $SIG{CHLD}
+          = 'DEFAULT';    # no idea why i need to do this, but it seems like waitpid() below return -1 if not
+        my $obj = $reactor->{forks}{$pid} || {};
 
-      if(waitpid($pid, WNOHANG) <= 0) {
-        # NOTE: cannot use kill() to check if the process is alive, since
-        # the process might be owned by another user.
-        -d "/proc/$pid" and next;
+        if (waitpid($pid, WNOHANG) <= 0) {
+
+          # NOTE: cannot use kill() to check if the process is alive, since
+          # the process might be owned by another user.
+          -d "/proc/$pid" and next;
+        }
+
+        my ($exit_value, $signal) = ($? >> 8, $? & 127);
+        warn "[$pid] Child is dead $exit_value/$signal\n" if DEBUG;
+        delete $reactor->{forks}{$pid} or next;    # SUPER DUPER IMPORTANT THAT THIS next; IS NOT BEFORE waitpid; ABOVE!
+        $obj->_read;                               # flush the rest
+        $obj->emit(close => $exit_value, $signal);
+        $obj->_cleanup;
       }
-
-      my($exit_value, $signal) = ($? >> 8, $? & 127);
-      warn "[$pid] Child is dead $exit_value/$signal\n" if DEBUG;
-      delete $reactor->{forks}{$pid} or next; # SUPER DUPER IMPORTANT THAT THIS next; IS NOT BEFORE waitpid; ABOVE!
-      $obj->_read; # flush the rest
-      $obj->emit(close => $exit_value, $signal);
-      $obj->_cleanup;
     }
-  });
+  );
 }
 
 =head2 write
@@ -321,9 +336,9 @@ Used to signal the child.
 =cut
 
 sub kill {
-  my $self = shift;
+  my $self   = shift;
   my $signal = shift // 15;
-  my $pid = $self->{pid} or return;
+  my $pid    = $self->{pid} or return;
 
   warn "[$pid] Kill $signal\n" if DEBUG;
   kill $signal, $pid;
@@ -341,19 +356,19 @@ sub _cleanup {
 
   $reactor->watch($self->{stdout_read}, 0, 0) if $self->{stdout_read};
   $reactor->remove(delete $self->{stdout_read}) if $self->{stdout_read};
-  $reactor->remove(delete $self->{delay}) if $self->{delay};
+  $reactor->remove(delete $self->{delay})       if $self->{delay};
 }
 
 sub _read {
-  my $self = shift;
+  my $self        = shift;
   my $stdout_read = $self->{stdout_read} or return;
-  my $read = $stdout_read->sysread(my $buffer, CHUNK_SIZE, 0);
+  my $read        = $stdout_read->sysread(my $buffer, CHUNK_SIZE, 0);
 
   $self->{errno} = $! // 0;
 
   return unless defined $read;
   return unless $read;
-  warn "[$self->{pid}] Got buffer (" .url_escape($buffer) .")\n" if DEBUG;
+  warn "[$self->{pid}] Got buffer (" . url_escape($buffer) . ")\n" if DEBUG;
   $self->emit(read => $buffer);
 }
 
@@ -362,12 +377,13 @@ sub _write {
 
   return unless length $self->{stdin_buffer};
   my $stdin_write = $self->{stdin_write};
-  my $written = $stdin_write->syswrite($self->{stdin_buffer});
+  my $written     = $stdin_write->syswrite($self->{stdin_buffer});
   return $self->_error unless defined $written;
   my $chunk = substr $self->{stdin_buffer}, 0, $written, '';
-  warn "[${ \$self->pid }] Wrote buffer (" .url_escape($chunk) .")\n" if DEBUG;
+  warn "[${ \$self->pid }] Wrote buffer (" . url_escape($chunk) . ")\n" if DEBUG;
 
   if (length $self->{stdin_buffer}) {
+
     # This is one ugly hack because it does not seem like IO::Pty play
     # nice with Mojo::Reactor(::EV) ->io(...) and ->watch(...)
     $self->reactor->timer(0.01 => sub { $self and $self->_write });
