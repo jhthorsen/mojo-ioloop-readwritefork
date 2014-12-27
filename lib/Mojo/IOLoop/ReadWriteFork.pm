@@ -71,14 +71,14 @@ Emitted when the child process exit.
 
 =head2 error
 
-  $self->emit(close => sub { my($self, $str) = @_; });
+  $self->emit(error => sub { my($self, $str) = @_; });
 
 Emitted when when the there is an issue with creating, writing or reading
 from the child process.
 
 =head2 read
 
-  $self->emit(close => sub { my($self, $chunk) = @_; });
+  $self->emit(read => sub { my($self, $chunk) = @_; });
 
 Emitted when the child has written a chunk of data to STDOUT or STDERR.
 
