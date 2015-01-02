@@ -1,9 +1,10 @@
 Revision history for Mojo-IOLoop-ReadWriteFork
 
 0.10
+       * Remove hackish /proc/$pid test
+       * Fix die() inside callback in child process
        * Add "ioloop" attribute
        * Deprecated "reactor" attribute
-       * Fix die() inside callback in child process
 
 0.09     Wed Nov 19 15:35:36 2014
        * Trying to fix t/telnet.t with \r\n on BSD

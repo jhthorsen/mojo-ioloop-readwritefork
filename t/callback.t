@@ -3,7 +3,7 @@ use Mojo::IOLoop::ReadWriteFork;
 use Test::More;
 use Test::Memory::Cycle;
 
-plan tests => 10;
+plan tests => 11;
 
 my $fork   = Mojo::IOLoop::ReadWriteFork->new;
 my $output = '';
@@ -54,5 +54,5 @@ memory_cycle_ok $fork, 'no cycle after Mojo::IOLoop->start';
 like $fork->pid, qr{^[1-9]\d+$}, 'got pid' or diag $fork->pid;
 like $output, qr{^some args\nline one\nline two\nOops at t/callback\.t.* line }, 'got stdout from callback'
   or diag $output;
-is $exit_value, 255, "got close event";
-is $signal,     0,   "got close event";
+is $exit_value, 255, 'got exit_value';
+is $signal,     0,   'got signal';

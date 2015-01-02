@@ -59,8 +59,18 @@ use Scalar::Util ();
 use constant CHUNK_SIZE        => $ENV{MOJO_CHUNK_SIZE}           || 131072;
 use constant DEBUG             => $ENV{MOJO_READWRITE_FORK_DEBUG} || $ENV{MOJO_READWRITEFORK_DEBUG} || 0;
 use constant WAIT_PID_INTERVAL => $ENV{WAIT_PID_INTERVAL}         || 0.01;
+use constant SIGCHLD => 'DEFAULT';    # no idea why I need to set SIGCHLD, but waitpid() misbehave if not
 
 our $VERSION = '0.09';
+
+our @SAFE_SIG = grep {
+  not /^(
+     NUM\d+
+    |__[A-Z0-9]+__
+    |ALL|CATCHALL|DEFER|HOLD|IGNORE|MAX|PAUSE|RTMAX|RTMIN|SEGV|SETS
+    |
+  )$/x
+} keys %SIG;
 
 =head1 EVENTS
 
@@ -215,7 +225,6 @@ sub _start {
     Scalar::Util::weaken($self);
     $self->ioloop->reactor->io(
       $stdout_read => sub {
-        $self->{stop} and return;
         local ($?, $!);
         my $reactor = shift;
 
@@ -224,8 +233,7 @@ sub _start {
         # 5 = Input/output error
         if ($self->{errno} == 5) {
           warn "[$pid] Ignoring child after $self->{errno}\n" if DEBUG;
-          $self->kill;
-          $self->{stop}++;
+          $reactor->watch(delete $self->{stdout_read}, 0, 0);
         }
         elsif ($self->{errno}) {
           warn "[$pid] Child $self->{errno}\n" if DEBUG;
@@ -259,10 +267,12 @@ sub _start {
     $ENV{$_} = $args->{env}{$_} for keys %{$args->{env}};
 
     if (ref $args->{program} eq 'CODE') {
-      local $! = 0;
+      $! = 0;
+      @SIG{@SAFE_SIG} = ('DEFAULT') x @SAFE_SIG;
       eval { $args->{program}->(@{$args->{program_args}}); };
       my $errno = $@ ? 255 : $!;
       print STDERR $@ if length $@;
+      eval { POSIX::_exit($errno); };
       exit $errno;
     }
     else {
@@ -275,30 +285,22 @@ sub _setup_recurring_child_alive_check {
   my ($self, $pid) = @_;
   my $reactor = $self->ioloop->reactor;
 
+  local $SIG{CHLD} = SIGCHLD();
   $reactor->{forks}{$pid} = $self;
   Scalar::Util::weaken($reactor->{forks}{$pid});
   $reactor->{fork_watcher} ||= $reactor->recurring(
     WAIT_PID_INTERVAL,
     sub {
       my $reactor = shift;
-
+      local $SIG{CHLD} = SIGCHLD();
       for my $pid (keys %{$reactor->{forks}}) {
-        local ($?, $!);
-        local $SIG{CHLD}
-          = 'DEFAULT';    # no idea why i need to do this, but it seems like waitpid() below return -1 if not
-        my $obj = $reactor->{forks}{$pid} || {};
-
-        if (waitpid($pid, WNOHANG) <= 0) {
-
-          # NOTE: cannot use kill() to check if the process is alive, since
-          # the process might be owned by another user.
-          -d "/proc/$pid" and next;
-        }
-
+        local ($?, $!) = (0, 0);
+        my $kid = waitpid $pid, WNOHANG;
+        next if $kid == -1 or $? == -1;    # No idea what ($? == -1) means, since waitpid() is not executing anything...
         my ($exit_value, $signal) = ($? >> 8, $? & 127);
-        warn "[$pid] Child is dead $exit_value/$signal\n" if DEBUG;
-        delete $reactor->{forks}{$pid} or next;    # SUPER DUPER IMPORTANT THAT THIS next; IS NOT BEFORE waitpid; ABOVE!
-        $obj->_read;                               # flush the rest
+        warn "[$pid] Child is dead ($?/$!) $exit_value/$signal\n" if DEBUG;
+        my $obj = delete $reactor->{forks}{$pid} or next;
+        $obj->_read;                       # flush the rest
         $obj->emit(close => $exit_value, $signal);
         $obj->_cleanup;
       }
@@ -360,7 +362,6 @@ sub _cleanup {
   my $self = shift;
   my $reactor = $self->{ioloop}{reactor} or return;
 
-  $reactor->watch($self->{stdout_read}, 0, 0) if $self->{stdout_read};
   $reactor->remove(delete $self->{stdout_read}) if $self->{stdout_read};
   $reactor->remove(delete $self->{delay})       if $self->{delay};
 }
