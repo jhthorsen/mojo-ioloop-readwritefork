@@ -50,6 +50,7 @@ See L<https://github.com/jhthorsen/mojo-ioloop-readwritefork/tree/master/example
 =cut
 
 use Mojo::Base 'Mojo::EventEmitter';
+use Mojo::IOLoop;
 use Mojo::Util 'url_escape';
 use Errno qw( EAGAIN ECONNRESET EINTR EPIPE EWOULDBLOCK );
 use IO::Pty;
@@ -84,26 +85,28 @@ Emitted when the child has written a chunk of data to STDOUT or STDERR.
 
 =head1 ATTRIBUTES
 
+=head2 ioloop
+
+  $ioloop = $self->ioloop;
+  $self = $self->ioloop(Mojo::IOLoop->singleton);
+
+Holds a L<Mojo::IOLoop> object.
+
 =head2 pid
+
+  $int = $self->pid;
 
 Holds the child process ID.
 
-=cut
-
-has pid => 0;
-
 =head2 reactor
 
-Holds a L<Mojo::Reactor> object. Default is:
-
-  Mojo::IOLoop->singleton->reactor;
+DEPRECATED.
 
 =cut
 
-has reactor => sub {
-  require Mojo::IOLoop;
-  Mojo::IOLoop->singleton->reactor;
-};
+sub pid { shift->{pid} || 0; }
+has ioloop => sub { Mojo::IOLoop->singleton; };
+sub reactor { warn "DEPRECATED! Use \$self->ioloop->reactor; instead"; shift->ioloop->reactor; }
 
 =head1 METHODS
 
@@ -171,7 +174,7 @@ sub start {
   $args->{program_args} ||= [];
   ref $args->{program_args} eq 'ARRAY' or die 'program_args need to be an array';
   Scalar::Util::weaken($self);
-  $self->{delay} = $self->reactor->timer(0 => sub { $self->_start($args) });
+  $self->{delay} = $self->ioloop->timer(0 => sub { $self->_start($args) });
   $self;
 }
 
@@ -210,7 +213,7 @@ sub _start {
     $stdout_read->close_slave if defined $stdout_read and UNIVERSAL::isa($stdout_read, 'IO::Pty');
 
     Scalar::Util::weaken($self);
-    $self->reactor->io(
+    $self->ioloop->reactor->io(
       $stdout_read => sub {
         $self->{stop} and return;
         local ($?, $!);
@@ -230,7 +233,7 @@ sub _start {
         }
       }
     );
-    $self->reactor->watch($stdout_read, 1, 0);
+    $self->ioloop->reactor->watch($stdout_read, 1, 0);
     $self->_setup_recurring_child_alive_check($pid);
     $self->_write;
   }
@@ -267,7 +270,7 @@ sub _start {
 
 sub _setup_recurring_child_alive_check {
   my ($self, $pid) = @_;
-  my $reactor = $self->reactor;
+  my $reactor = $self->ioloop->reactor;
 
   $reactor->{forks}{$pid} = $self;
   Scalar::Util::weaken($reactor->{forks}{$pid});
@@ -352,7 +355,7 @@ sub _error {
 
 sub _cleanup {
   my $self = shift;
-  my $reactor = $self->{reactor} or return;
+  my $reactor = $self->{ioloop}{reactor} or return;
 
   $reactor->watch($self->{stdout_read}, 0, 0) if $self->{stdout_read};
   $reactor->remove(delete $self->{stdout_read}) if $self->{stdout_read};
@@ -386,7 +389,7 @@ sub _write {
 
     # This is one ugly hack because it does not seem like IO::Pty play
     # nice with Mojo::Reactor(::EV) ->io(...) and ->watch(...)
-    $self->reactor->timer(0.01 => sub { $self and $self->_write });
+    $self->ioloop->timer(0.01 => sub { $self and $self->_write });
   }
   else {
     $self->emit('drain');

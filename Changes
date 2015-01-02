@@ -1,5 +1,9 @@
 Revision history for Mojo-IOLoop-ReadWriteFork
 
+0.10
+       * Add "ioloop" attribute
+       * Deprecated "reactor" attribute
+
 0.09     Wed Nov 19 15:35:36 2014
        * Trying to fix t/telnet.t with \r\n on BSD
 
