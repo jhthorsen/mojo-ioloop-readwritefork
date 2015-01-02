@@ -2,6 +2,7 @@
 /MYMETA.*
 /blib/
 /inc/
+/local
 /pm_to_blib
 /MANIFEST
 /MANIFEST.bak
