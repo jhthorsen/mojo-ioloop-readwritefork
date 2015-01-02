@@ -7,8 +7,7 @@ plan tests => 10;
 
 my $fork   = Mojo::IOLoop::ReadWriteFork->new;
 my $output = '';
-my $closed = 0;
-my $read;
+my ($read, $exit_value, $signal);
 
 memory_cycle_ok $fork, 'no cycle after new()';
 $fork->on(
@@ -19,7 +18,7 @@ $fork->on(
 );
 $fork->on(
   close => sub {
-    $closed++;
+    (my $self, $exit_value, $signal) = @_;
     Mojo::IOLoop->stop;
   }
 );
@@ -41,16 +40,19 @@ $fork->start(
     my $input = <STDIN>;
     print $input;
     print "line two\n";
+    die "Oops";
   },
   program_args => [qw( some args )],
 );
 
 memory_cycle_ok $fork, 'no cycle after start()';
 is $fork->pid, 0, 'no pid' or diag $fork->pid;
-Mojo::IOLoop->timer(3 => sub { Mojo::IOLoop->stop });    # guard
+Mojo::IOLoop->timer(0.5 => sub { Mojo::IOLoop->stop });    # guard
 Mojo::IOLoop->start;
 memory_cycle_ok $fork, 'no cycle after Mojo::IOLoop->start';
 
 like $fork->pid, qr{^[1-9]\d+$}, 'got pid' or diag $fork->pid;
-like $output, qr/^some args\nline one\nline two\n/, 'got stdout from callback' or diag $output;
-is $closed, 1, "got close event";
+like $output, qr{^some args\nline one\nline two\nOops at t/callback\.t.* line }, 'got stdout from callback'
+  or diag $output;
+is $exit_value, 255, "got close event";
+is $signal,     0,   "got close event";

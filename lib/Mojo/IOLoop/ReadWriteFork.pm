@@ -259,8 +259,11 @@ sub _start {
     $ENV{$_} = $args->{env}{$_} for keys %{$args->{env}};
 
     if (ref $args->{program} eq 'CODE') {
-      $args->{program}->(@{$args->{program_args}});
-      exit 0;
+      local $! = 0;
+      eval { $args->{program}->(@{$args->{program_args}}); };
+      my $errno = $@ ? 255 : $!;
+      print STDERR $@ if length $@;
+      exit $errno;
     }
     else {
       exec $args->{program}, @{$args->{program_args}};
