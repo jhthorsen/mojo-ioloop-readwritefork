@@ -51,7 +51,7 @@ See L<https://github.com/jhthorsen/mojo-ioloop-readwritefork/tree/master/example
 
 use Mojo::Base 'Mojo::EventEmitter';
 use Mojo::IOLoop;
-use Mojo::Util 'url_escape';
+use Mojo::Util;
 use Errno qw( EAGAIN ECONNRESET EINTR EPIPE EWOULDBLOCK );
 use IO::Pty;
 use POSIX ':sys_wait_h';
@@ -60,6 +60,8 @@ use constant CHUNK_SIZE        => $ENV{MOJO_CHUNK_SIZE}           || 131072;
 use constant DEBUG             => $ENV{MOJO_READWRITE_FORK_DEBUG} || $ENV{MOJO_READWRITEFORK_DEBUG} || 0;
 use constant WAIT_PID_INTERVAL => $ENV{WAIT_PID_INTERVAL}         || 0.01;
 use constant SIGCHLD => 'DEFAULT';    # no idea why I need to set SIGCHLD, but waitpid() misbehave if not
+
+sub ESC { Mojo::Util::url_escape($_[0], '^A-Za-z0-9\s\-._~'); }
 
 our $VERSION = '0.09';
 
@@ -193,7 +195,7 @@ sub _start {
   my ($self, $args) = @_;
   my ($stdout_read, $stdout_write);
   my ($stdin_read,  $stdin_write);
-  my $pid;
+  my ($errno,       $pid);
 
   if ($args->{conduit} eq 'pipe') {
     pipe $stdout_read, $stdout_write or return $self->emit(error => "pipe: $!");
@@ -256,9 +258,9 @@ sub _start {
     warn "[$$] Starting $args->{program} @{ $args->{program_args} }\n" if DEBUG;
     CORE::close($stdin_write);
     CORE::close($stdout_read);
-    open STDIN,  '<&' . fileno $stdin_read   or die $!;
-    open STDOUT, '>&' . fileno $stdout_write or die $!;
-    open STDERR, '>&' . fileno $stdout_write or die $!;
+    open STDIN,  '<&' . fileno $stdin_read   or exit $!;
+    open STDOUT, '>&' . fileno $stdout_write or exit $!;
+    open STDERR, '>&' . fileno $stdout_write or exit $!;
     select STDERR;
     $| = 1;
     select STDOUT;
@@ -270,14 +272,15 @@ sub _start {
       $! = 0;
       @SIG{@SAFE_SIG} = ('DEFAULT') x @SAFE_SIG;
       eval { $args->{program}->(@{$args->{program_args}}); };
-      my $errno = $@ ? 255 : $!;
+      $errno = $@ ? 255 : $!;
       print STDERR $@ if length $@;
-      eval { POSIX::_exit($errno); };
-      exit $errno;
     }
     else {
       exec $args->{program}, @{$args->{program_args}};
     }
+
+    eval { POSIX::_exit($errno // $!); };
+    exit($errno // $!);
   }
 }
 
@@ -292,15 +295,15 @@ sub _setup_recurring_child_alive_check {
     WAIT_PID_INTERVAL,
     sub {
       my $reactor = shift;
-      local $SIG{CHLD} = SIGCHLD();
       for my $pid (keys %{$reactor->{forks}}) {
-        local ($?, $!) = (0, 0);
-        my $kid = waitpid $pid, WNOHANG;
-        next if $kid == -1 or $? == -1;    # No idea what ($? == -1) means, since waitpid() is not executing anything...
+        local $SIG{CHLD} = SIGCHLD();
+        local ($?, $!);
+        waitpid $pid, WNOHANG;
+        next if $? == -1;    # No idea what ($? == -1) means, since waitpid() is not executing anything...
         my ($exit_value, $signal) = ($? >> 8, $? & 127);
         warn "[$pid] Child is dead ($?/$!) $exit_value/$signal\n" if DEBUG;
         my $obj = delete $reactor->{forks}{$pid} or next;
-        $obj->_read;                       # flush the rest
+        $obj->_read;         # flush the rest
         $obj->emit(close => $exit_value, $signal);
         $obj->_cleanup;
       }
@@ -375,7 +378,7 @@ sub _read {
 
   return unless defined $read;
   return unless $read;
-  warn "[$self->{pid}] Got buffer (" . url_escape($buffer) . ")\n" if DEBUG;
+  warn "[$self->{pid}] Got buffer (@{[ESC($buffer)]})\n" if DEBUG;
   $self->emit(read => $buffer);
 }
 
@@ -387,7 +390,7 @@ sub _write {
   my $written     = $stdin_write->syswrite($self->{stdin_buffer});
   return $self->_error unless defined $written;
   my $chunk = substr $self->{stdin_buffer}, 0, $written, '';
-  warn "[${ \$self->pid }] Wrote buffer (" . url_escape($chunk) . ")\n" if DEBUG;
+  warn "[${ \$self->pid }] Wrote buffer (@{[ESC($chunk)]})\n" if DEBUG;
 
   if (length $self->{stdin_buffer}) {
 

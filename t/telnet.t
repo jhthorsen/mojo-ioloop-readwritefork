@@ -20,7 +20,7 @@ Mojo::IOLoop->server(
     $stream->on(
       read => sub {
         my ($stream, $chunk) = @_;
-        diag "WRITE(I heard you say: $chunk)";
+        diag "WRITE(I heard you say: $chunk)" if $ENV{HARNESS_IS_VERBOSE};
         $stream->write("I heard you say: $chunk");
       }
     );
@@ -41,7 +41,7 @@ $fork->on(
 $fork->on(
   read => sub {
     my ($fork, $chunk) = @_;
-    diag "READ($chunk)";
+    diag "READ($chunk)" if $ENV{HARNESS_IS_VERBOSE};
     $fork->write("hey\r\n", sub { $drain++; }) if $chunk =~ /Connected/;
     $fork->kill(15) if $chunk =~ /I heard you say/;
     $output .= $chunk;

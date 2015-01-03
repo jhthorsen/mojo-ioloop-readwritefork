@@ -1,9 +1,10 @@
 Revision history for Mojo-IOLoop-ReadWriteFork
 
 0.10
-       * Remove hackish /proc/$pid test
        * Fix die() inside callback in child process
+       * Fix starting invalid program
        * Add "ioloop" attribute
+       * Remove hackish /proc/$pid test
        * Deprecated "reactor" attribute
 
 0.09     Wed Nov 19 15:35:36 2014
