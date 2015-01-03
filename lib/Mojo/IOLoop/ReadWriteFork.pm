@@ -57,7 +57,7 @@ use IO::Pty;
 use POSIX ':sys_wait_h';
 use Scalar::Util ();
 use constant CHUNK_SIZE        => $ENV{MOJO_CHUNK_SIZE}           || 131072;
-use constant DEBUG             => $ENV{MOJO_READWRITE_FORK_DEBUG} || 0;
+use constant DEBUG             => $ENV{MOJO_READWRITE_FORK_DEBUG} || $ENV{MOJO_READWRITEFORK_DEBUG} || 0;
 use constant WAIT_PID_INTERVAL => $ENV{WAIT_PID_INTERVAL}         || 0.01;
 
 our $VERSION = '0.09';
