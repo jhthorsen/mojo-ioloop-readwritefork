@@ -1,5 +1,8 @@
 Revision history for Mojo-IOLoop-ReadWriteFork
 
+0.11
+       * Skip sudo.t
+
 0.10     Sat Jan  3 12:59:57 2015
        * Fix die() inside callback in child process
        * Fix starting invalid program
