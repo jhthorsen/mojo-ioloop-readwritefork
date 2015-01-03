@@ -6,7 +6,7 @@ Mojo::IOLoop::ReadWriteFork - Fork a process and read/write from it
 
 =head1 VERSION
 
-0.10
+0.11
 
 =head1 DESCRIPTION
 
@@ -63,7 +63,7 @@ use constant SIGCHLD => 'DEFAULT';    # no idea why I need to set SIGCHLD, but w
 
 sub ESC { Mojo::Util::url_escape($_[0], '^A-Za-z0-9\s\-._~'); }
 
-our $VERSION = '0.10';
+our $VERSION = '0.11';
 
 our @SAFE_SIG = grep {
   not /^(
