@@ -2,7 +2,7 @@ NAME
     Mojo::IOLoop::ReadWriteFork - Fork a process and read/write from it
 
 VERSION
-    0.09
+    0.10
 
 DESCRIPTION
     This class enable you to fork children which you can write data to and
@@ -43,23 +43,35 @@ SYNOPSIS
 
 EVENTS
   close
+      $self->emit(close => sub { my($self, $exit_value, $signal) = @_; });
+
     Emitted when the child process exit.
 
   error
+      $self->emit(error => sub { my($self, $str) = @_; });
+
     Emitted when when the there is an issue with creating, writing or
     reading from the child process.
 
   read
+      $self->emit(read => sub { my($self, $chunk) = @_; });
+
     Emitted when the child has written a chunk of data to STDOUT or STDERR.
 
 ATTRIBUTES
+  ioloop
+      $ioloop = $self->ioloop;
+      $self = $self->ioloop(Mojo::IOLoop->singleton);
+
+    Holds a Mojo::IOLoop object.
+
   pid
+      $int = $self->pid;
+
     Holds the child process ID.
 
   reactor
-    Holds a Mojo::Reactor object. Default is:
-
-      Mojo::IOLoop->singleton->reactor;
+    DEPRECATED.
 
 METHODS
   close
