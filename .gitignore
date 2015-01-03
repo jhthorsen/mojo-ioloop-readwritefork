@@ -8,6 +8,7 @@
 /MANIFEST.bak
 /Makefile
 /Makefile.old
+.sudo_password
 *.old
 *.swp
 ~$
