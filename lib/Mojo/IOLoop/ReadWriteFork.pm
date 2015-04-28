@@ -61,7 +61,13 @@ use constant DEBUG             => $ENV{MOJO_READWRITE_FORK_DEBUG} || $ENV{MOJO_R
 use constant WAIT_PID_INTERVAL => $ENV{WAIT_PID_INTERVAL}         || 0.01;
 use constant SIGCHLD => 'DEFAULT';    # no idea why I need to set SIGCHLD, but waitpid() misbehave if not
 
-sub ESC { Mojo::Util::url_escape($_[0], '^A-Za-z0-9\s\-._~'); }
+my %ESC = ("\0" => '\0', "\a" => '\a', "\b" => '\b', "\f" => '\f', "\n" => '\n', "\r" => '\r', "\t" => '\t');
+
+sub ESC {
+  local $_ = shift;
+  s/([\x00-\x1f\x7f\x80-\x9f])/$ESC{$1} || sprintf "\\x%02x", ord $1/ge;
+  $_;
+}
 
 our $VERSION = '0.11';
 
@@ -380,7 +386,7 @@ sub _read {
 
   return unless defined $read;
   return unless $read;
-  warn "[$self->{pid}] Got buffer (@{[ESC($buffer)]})\n" if DEBUG;
+  warn "[$self->{pid}] >>> @{[ESC($buffer)]}\n" if DEBUG;
   $self->emit(read => $buffer);
 }
 
@@ -392,7 +398,7 @@ sub _write {
   my $written     = $stdin_write->syswrite($self->{stdin_buffer});
   return $self->_error unless defined $written;
   my $chunk = substr $self->{stdin_buffer}, 0, $written, '';
-  warn "[${ \$self->pid }] Wrote buffer (@{[ESC($chunk)]})\n" if DEBUG;
+  warn "[${ \$self->pid }] <<< @{[ESC($chunk)]}\n" if DEBUG;
 
   if (length $self->{stdin_buffer}) {
 

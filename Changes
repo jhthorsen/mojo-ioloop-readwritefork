@@ -2,6 +2,7 @@ Revision history for perl distribution Mojo-IOLoop-ReadWriteFork
 
 0.12 Not Released
  - Fix reading from stdout_read after "Input/output error" ($!=5)
+ - Improved output to screen in DEBUG mode
  - Will not require Test::Memory::Cycle
    It could not be installed, since it require CGI.pm which is not core anymore
 
