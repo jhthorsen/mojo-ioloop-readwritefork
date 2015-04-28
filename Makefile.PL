@@ -14,7 +14,7 @@ WriteMakefile(
       repository => 'https://github.com/jhthorsen/mojo-ioloop-readwritefork.git',
     },
   },
-  BUILD_REQUIRES => {'Test::Memory::Cycle' => '1.04', 'Test::More'  => '0.88'},
-  PREREQ_PM      => {'IO::Pty'             => '1.10', 'Mojolicious' => '5.73'},
-  test           => {TESTS                 => 't/*.t'},
+  BUILD_REQUIRES => {'Test::More' => '0.88'},
+  PREREQ_PM      => {'IO::Pty'    => '1.10', 'Mojolicious' => '4.30'},
+  test           => {TESTS        => 't/*.t'},
 );
