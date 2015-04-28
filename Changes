@@ -1,46 +1,48 @@
-Revision history for Mojo-IOLoop-ReadWriteFork
+Revision history for perl distribution Mojo-IOLoop-ReadWriteFork
 
-0.11     Sat Jan  3 15:32:16 2015
-       * Skip sudo.t
+0.11 2015-01-03T15:32:16Z
+ - Skip sudo.t
 
-0.10     Sat Jan  3 12:59:57 2015
-       * Fix die() inside callback in child process
-       * Fix starting invalid program
-       * Add "ioloop" attribute
-       * Remove hackish /proc/$pid test
-       * Deprecated "reactor" attribute
+0.10 2015-01-03T12:59:57Z
+ - Fix die() inside callback in child process
+ - Fix starting invalid program
+ - Add "ioloop" attribute
+ - Remove hackish /proc/$pid test
+ - Deprecated "reactor" attribute
 
-0.09     Wed Nov 19 15:35:36 2014
-       * Trying to fix t/telnet.t with \r\n on BSD
+0.09 2014-11-19T15:35:36Z
+ - Trying to fix t/telnet.t with \r\n on BSD
 
-0.08     Sun Nov 16 14:16:47 2014
-       * Trying to fix t/telnet.t with localhost
+0.08 2014-11-16T14:16:47Z
+ - Trying to fix t/telnet.t with localhost
 
-0.07     Thu Nov 13 18:52:55 2014
-       * Trying to fix t/telnet.t with 127.0.0.1
-       * Mojo::EventEmitter::emit_safe is DEPRECATED
+0.07 2014-11-13T18:52:55Z
+ - Trying to fix t/telnet.t with 127.0.0.1
+ - Mojo::EventEmitter::emit_safe is DEPRECATED
 
-0.06     Mon Aug 11 16:59:18 2014
-       * Fix "Use of uninitialized value in numeric eq (==) at ReadWriteFork.pm line 182."
-       * Add support for write() before child process has started
-       * Add support for "drain" callback to write()
-       * Add run(). a simpler version start()
-       * Add close() for closing STDIN
+0.06 2014-08-11T16:59:18Z
+ - Fix "Use of uninitialized value in numeric eq (==) at ReadWriteFork.pm
+   line 182."
+ - Add support for write() before child process has started
+ - Add support for "drain" callback to write()
+ - Add run(). a simpler version start()
+ - Add close() for closing STDIN
 
-0.05     Wed Feb 19 13:29:54 2014
-       * Fix "read" event cannot change ERRNO from sysread()
+0.05 2014-02-19T13:29:54Z
+ - Fix "read" event cannot change ERRNO from sysread()
 
-0.04     Fri Nov 22 19:52:52 2013
-       * Add support for callbacks
-       * Fix failing tests
+0.04 2013-11-22T19:52:52Z
+ - Add support for callbacks
+ - Fix failing tests
 
-0.03     Fri Nov 22 08:35:43 2013
-       * A bit more relaxed test for cat.t: Running it on BSD results in
-         "^D&#8;&#8;" at the end.
+0.03 2013-11-22T08:35:43Z
+ - A bit more relaxed test for cat.t: Running it on BSD results in
+   "^D&#8;&#8;" at the end.
 
-0.02     Wed Nov 20 11:36:38 2013
-       * Add example/tail.pl
-       * Fix failing t/bash.t
+0.02 2013-11-20T11:36:38Z
+ - Add example/tail.pl
+ - Fix failing t/bash.t
 
-0.01     Wed Nov 20 10:25:19 2013
-       * First release on CPAN
+0.01 2013-11-20T10:25:19Z
+ - First release on CPAN
+
