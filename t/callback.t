@@ -1,9 +1,10 @@
 use Mojo::Base -strict;
 use Mojo::IOLoop::ReadWriteFork;
 use Test::More;
-use Test::Memory::Cycle;
 
-plan tests => 11;
+BEGIN {
+  eval 'use Test::Memory::Cycle;1' or Mojo::Util::monkey_patch(main => memory_cycle_ok => sub { });
+}
 
 my $fork   = Mojo::IOLoop::ReadWriteFork->new;
 my $output = '';
@@ -56,3 +57,5 @@ like $output, qr{^some args\nline one\nline two\nOops at t/callback\.t.* line },
   or diag $output;
 is $exit_value, 255, 'got exit_value';
 is $signal,     0,   'got signal';
+
+done_testing;

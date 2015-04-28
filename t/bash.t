@@ -1,7 +1,6 @@
 use Mojo::Base -strict;
 use Mojo::IOLoop::ReadWriteFork;
 use Test::More;
-use Test::Memory::Cycle;
 
 $ENV{PATH} ||= '';
 plan skip_all => 'bash is missing' unless grep { -x "$_/bash" } split /:/, $ENV{PATH};

@@ -1,5 +1,9 @@
 Revision history for perl distribution Mojo-IOLoop-ReadWriteFork
 
+0.12 Not Released
+ - Will not require Test::Memory::Cycle
+   It could not be installed, since it require CGI.pm which is not core anymore
+
 0.11 2015-01-03T15:32:16Z
  - Skip sudo.t
 

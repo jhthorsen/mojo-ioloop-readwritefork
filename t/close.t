@@ -1,7 +1,6 @@
 use Mojo::Base -strict;
 use Mojo::IOLoop::ReadWriteFork;
 use Test::More;
-use Test::Memory::Cycle;
 
 my $fork   = Mojo::IOLoop::ReadWriteFork->new;
 my $output = '';

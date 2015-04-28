@@ -1,7 +1,10 @@
 use Mojo::Base -strict;
 use Mojo::IOLoop::ReadWriteFork;
 use Test::More;
-use Test::Memory::Cycle;
+
+BEGIN {
+  eval 'use Test::Memory::Cycle;1' or Mojo::Util::monkey_patch(main => memory_cycle_ok => sub { });
+}
 
 my $fork   = Mojo::IOLoop::ReadWriteFork->new;
 my $drain  = 0;

@@ -2,7 +2,6 @@ use Mojo::Base -strict;
 use Mojo::IOLoop;
 use Mojo::IOLoop::ReadWriteFork;
 use Test::More;
-use Test::Memory::Cycle;
 
 $ENV{PATH} ||= '';
 plan skip_all => 'telnet is missing' unless grep { -x "$_/telnet" } split /:/, $ENV{PATH};
