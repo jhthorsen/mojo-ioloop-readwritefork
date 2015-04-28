@@ -234,8 +234,10 @@ sub _start {
 
         # 5 = Input/output error
         if ($self->{errno} == 5) {
-          warn "[$pid] Ignoring child after $self->{errno}\n" if DEBUG;
-          $reactor->watch(delete $self->{stdout_read}, 0, 0);
+          if (my $handle = delete $self->{stdout_read}) {
+            warn "[$pid] Ignoring child after $self->{errno}\n" if DEBUG;
+            $reactor->watch($handle, 0, 0);
+          }
         }
         elsif ($self->{errno}) {
           warn "[$pid] Child $self->{errno}\n" if DEBUG;
