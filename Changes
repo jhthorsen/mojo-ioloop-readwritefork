@@ -1,6 +1,6 @@
 Revision history for perl distribution Mojo-IOLoop-ReadWriteFork
 
-0.13 Not Released
+0.13 2015-07-16T12:42:41+0200
  - Will use EV::child to look for SIGCHLD if EV is available
 
 0.12 2015-04-28T15:14:02+0200
