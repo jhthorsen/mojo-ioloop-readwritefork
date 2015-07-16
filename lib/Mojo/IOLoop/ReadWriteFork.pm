@@ -59,7 +59,6 @@ use Scalar::Util ();
 use constant CHUNK_SIZE        => $ENV{MOJO_CHUNK_SIZE}           || 131072;
 use constant DEBUG             => $ENV{MOJO_READWRITE_FORK_DEBUG} || $ENV{MOJO_READWRITEFORK_DEBUG} || 0;
 use constant WAIT_PID_INTERVAL => $ENV{WAIT_PID_INTERVAL}         || 0.01;
-use constant SIGCHLD => 'DEFAULT';    # no idea why I need to set SIGCHLD, but waitpid() misbehave if not
 
 my %ESC = ("\0" => '\0', "\a" => '\a', "\b" => '\b', "\f" => '\f', "\n" => '\n', "\r" => '\r', "\t" => '\t');
 
@@ -252,7 +251,7 @@ sub _start {
       }
     );
     $self->ioloop->reactor->watch($stdout_read, 1, 0);
-    $self->_setup_recurring_child_alive_check($pid);
+    $self->_watch_pid($pid);
     $self->_write;
   }
   else {    # child ===========================================================
@@ -290,33 +289,6 @@ sub _start {
     eval { POSIX::_exit($errno // $!); };
     exit($errno // $!);
   }
-}
-
-sub _setup_recurring_child_alive_check {
-  my ($self, $pid) = @_;
-  my $reactor = $self->ioloop->reactor;
-
-  local $SIG{CHLD} = SIGCHLD();
-  $reactor->{forks}{$pid} = $self;
-  Scalar::Util::weaken($reactor->{forks}{$pid});
-  $reactor->{fork_watcher} ||= $reactor->recurring(
-    WAIT_PID_INTERVAL,
-    sub {
-      my $reactor = shift;
-      for my $pid (keys %{$reactor->{forks}}) {
-        local $SIG{CHLD} = SIGCHLD();
-        local ($?, $!);
-        waitpid $pid, WNOHANG;
-        next if $? == -1;    # No idea what ($? == -1) means, since waitpid() is not executing anything...
-        my ($exit_value, $signal) = ($? >> 8, $? & 127);
-        warn "[$pid] Child is dead ($?/$!) $exit_value/$signal\n" if DEBUG;
-        my $obj = delete $reactor->{forks}{$pid} or next;
-        $obj->_read;         # flush the rest
-        $obj->emit(close => $exit_value, $signal);
-        $obj->_cleanup;
-      }
-    }
-  );
 }
 
 =head2 write
@@ -388,6 +360,41 @@ sub _read {
   return unless $read;
   warn "[$self->{pid}] >>> @{[ESC($buffer)]}\n" if DEBUG;
   $self->emit(read => $buffer);
+}
+
+sub _sigchld {
+  my $self = shift;
+  my ($exit_value, $signal) = ($_[1] >> 8, $_[1] & 127);
+  warn "[$_[0]] Child is dead ($?/$!) $exit_value/$signal\n" if DEBUG;
+  $self or return;    # maybe $self has already gone out of scope
+  $self->_read;       # flush the rest
+  $self->emit(close => $exit_value, $signal);
+  $self->_cleanup;
+}
+
+sub _watch_pid {
+  my ($self, $pid) = @_;
+  my $reactor = $self->ioloop->reactor;
+
+  if ($reactor->isa('Mojo::Reactor::EV')) {
+    Scalar::Util::weaken($self);
+    $self->{ev_child} = EV::child($pid, 0, sub { _sigchld($self, $pid, $_[0]->rstatus); });
+  }
+  else {
+    $reactor->{fork_watcher} ||= $reactor->recurring(WAIT_PID_INTERVAL, \&_watch_forks);
+    Scalar::Util::weaken($reactor->{forks}{$pid} = $self);
+  }
+}
+
+sub _watch_forks {
+  my $reactor = shift;
+
+  for my $pid (keys %{$reactor->{forks}}) {
+    local ($?, $!);
+    my $kid = waitpid $pid, WNOHANG or next;
+    warn "waitpid $pid, WNOHANG failed: $! ($kid, $?)" unless $kid == $pid;
+    _sigchld(delete $reactor->{forks}{$pid}, $pid, $?);
+  }
 }
 
 sub _write {

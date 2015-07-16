@@ -8,6 +8,7 @@
 /MANIFEST.bak
 /Makefile
 /Makefile.old
+.readwritefork_ssh
 .sudo_password
 *.old
 *.swp

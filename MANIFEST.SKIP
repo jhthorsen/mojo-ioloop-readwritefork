@@ -61,3 +61,5 @@
 ^local/
 ^MANIFEST\.SKIP
 ^README\.pod
+^.readwritefork_ssh
+^.sudo_password

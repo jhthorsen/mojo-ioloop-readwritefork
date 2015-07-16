@@ -2,7 +2,10 @@ use Mojo::Base -strict;
 use Test::More;
 use Mojo::IOLoop::ReadWriteFork;
 
-plan skip_all => 'READWRITEFORK_SSH=host is not set' unless $ENV{READWRITEFORK_SSH};
+plan skip_all => 'READWRITEFORK_SSH=host is not set' unless $ENV{READWRITEFORK_SSH} or -e '.readwritefork_ssh';
+
+$ENV{READWRITEFORK_SSH} ||= Mojo::Util::slurp('.readwritefork_ssh');
+chomp $ENV{READWRITEFORK_SSH};
 
 my $fork = Mojo::IOLoop::ReadWriteFork->new;
 my ($read, $exit_value);
