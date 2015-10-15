@@ -1,5 +1,8 @@
 Revision history for perl distribution Mojo-IOLoop-ReadWriteFork
 
+0.15 2015-10-15T16:50:48+0200
+ - Made t/minion.t more robust
+
 0.14 2015-10-15T16:21:07+0200
  - Will use waitpid() if $SIG{CHLD} = "DEFAULT"
    https://github.com/kraih/minion/issues/15

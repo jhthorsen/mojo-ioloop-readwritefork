@@ -6,7 +6,7 @@ Mojo::IOLoop::ReadWriteFork - Fork a process and read/write from it
 
 =head1 VERSION
 
-0.14
+0.15
 
 =head1 DESCRIPTION
 
@@ -68,7 +68,7 @@ sub ESC {
   $_;
 }
 
-our $VERSION = '0.14';
+our $VERSION = '0.15';
 
 our @SAFE_SIG = grep {
   not /^(
