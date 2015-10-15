@@ -380,13 +380,13 @@ sub _watch_pid {
   # The $chld test is for code, such as Minion::Command::minion::worker
   # where SIGCHLD is set up to DEFAULT for manual waitpid() checks.
   # See https://github.com/kraih/minion/issues/15 for details.
-  if ($chld ne 'DEFAULT' and $reactor->isa('Mojo::Reactor::EV')) {
-    Scalar::Util::weaken($self);
-    $self->{ev_child} = EV::child($pid, 0, sub { _sigchld($self, $pid, $_[0]->rstatus); });
-  }
-  else {
+  if ($chld eq 'DEFAULT' or !$reactor->isa('Mojo::Reactor::EV')) {
     $reactor->{fork_watcher} ||= $reactor->recurring(WAIT_PID_INTERVAL, \&_watch_forks);
     Scalar::Util::weaken($reactor->{forks}{$pid} = $self);
+  }
+  else {
+    Scalar::Util::weaken($self);
+    $self->{ev_child} = EV::child($pid, 0, sub { _sigchld($self, $pid, $_[0]->rstatus); });
   }
 }
 
