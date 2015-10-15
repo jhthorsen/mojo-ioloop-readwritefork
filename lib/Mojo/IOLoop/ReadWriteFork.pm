@@ -374,9 +374,13 @@ sub _sigchld {
 
 sub _watch_pid {
   my ($self, $pid) = @_;
+  my $chld = $SIG{CHLD} || '';
   my $reactor = $self->ioloop->reactor;
 
-  if ($reactor->isa('Mojo::Reactor::EV')) {
+  # The $chld test is for code, such as Minion::Command::minion::worker
+  # where SIGCHLD is set up to DEFAULT for manual waitpid() checks.
+  # See https://github.com/kraih/minion/issues/15 for details.
+  if ($chld ne 'DEFAULT' and $reactor->isa('Mojo::Reactor::EV')) {
     Scalar::Util::weaken($self);
     $self->{ev_child} = EV::child($pid, 0, sub { _sigchld($self, $pid, $_[0]->rstatus); });
   }

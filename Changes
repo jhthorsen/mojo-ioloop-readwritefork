@@ -1,5 +1,9 @@
 Revision history for perl distribution Mojo-IOLoop-ReadWriteFork
 
+0.14 Not Released
+ - Will use waitpid() if $SIG{CHLD} = "DEFAULT"
+   https://github.com/kraih/minion/issues/15
+
 0.13 2015-07-16T12:42:41+0200
  - Will use EV::child to look for SIGCHLD if EV is available
 
