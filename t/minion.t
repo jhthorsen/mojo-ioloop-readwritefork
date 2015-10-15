@@ -28,16 +28,20 @@ app->minion->add_task(
     $job->finish($exit_code);
   }
 );
-app->minion->enqueue('rwf');
+
+my $id = app->minion->enqueue('rwf');
 
 require Minion::Command::minion::worker;
 my $worker = Minion::Command::minion::worker->new(app => app);
+my $job = $worker->app->minion->job($id) || {};
 
+ok $job, 'got rwf job';
+is $job->info->{state}, 'inactive', 'inactive job';
 $SIG{ALRM} = sub { kill TERM => $$ };    # graceful exit
 ualarm 100e3;
 $worker->run;
 
-my $jobs = app->minion->backend->list_jobs(0, 10);
-is $jobs->[0]{result}, 42, 'exit_code from child';
+is $job->info->{state},  'finished', 'finished job';
+is $job->info->{result}, 42,         'exit_code from child';
 
 done_testing();
