@@ -1,6 +1,6 @@
 Revision history for perl distribution Mojo-IOLoop-ReadWriteFork
 
-0.14 Not Released
+0.14 2015-10-15T16:21:07+0200
  - Will use waitpid() if $SIG{CHLD} = "DEFAULT"
    https://github.com/kraih/minion/issues/15
 
