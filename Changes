@@ -1,5 +1,8 @@
 Revision history for perl distribution Mojo-IOLoop-ReadWriteFork
 
+0.16 Not Released
+ - Fix Minion::Backend::File does not exist anymore #2
+
 0.15 2015-10-15T16:50:48+0200
  - Made t/minion.t more robust
 
