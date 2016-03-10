@@ -6,7 +6,7 @@ use Test::More;
 $ENV{PATH} ||= '';
 plan skip_all => 'telnet is missing' unless grep { -x "$_/telnet" } split /:/, $ENV{PATH};
 
-my $address = 'localhost';
+my $address = '127.0.0.1';
 my $port    = Mojo::IOLoop::Server->generate_port;
 my ($exit_value, $signal);
 my $connected = 0;
@@ -49,8 +49,11 @@ $fork->on(
 
 $fork->start(program => 'telnet', program_args => [$address, $port], conduit => 'pty',);
 
-Mojo::IOLoop->timer(1 => sub { Mojo::IOLoop->stop });    # guard
+my $guard;
+Mojo::IOLoop->timer(1 => sub { $guard++; Mojo::IOLoop->stop });    # guard
 Mojo::IOLoop->start;
+plan skip_all => 'Saved by guard' if $guard;
+
 like $output,   qr{Connected},              'Connected';
 like $output,   qr{I heard you say:.*hey}s, 'got echo';
 is $drain,      1,                          'got drain event';

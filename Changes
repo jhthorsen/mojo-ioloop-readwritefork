@@ -1,5 +1,9 @@
 Revision history for perl distribution Mojo-IOLoop-ReadWriteFork
 
+0.17 2016-03-10T22:41:54+0100
+ - Improve tests on FreeBSD
+   http://cpantesters.org/cpan/report/9d911494-a39d-11e5-932c-a1bf8fb2e322
+
 0.16 2015-11-19T19:36:39+0100
  - Fix Minion::Backend::File does not exist anymore #2
 
