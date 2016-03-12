@@ -37,6 +37,11 @@ and STDOUT are more than welcome.
     $cat_result .= $buffer;
   });
 
+  $fork->on(read_timeout => sub {
+    my $fork = shift;
+    $fork->kill(9);
+  });
+
   $fork->start(
     program => 'bash',
     program_args => [ -c => 'echo $YIKES foo bar baz' ],
@@ -100,6 +105,12 @@ from the child process.
 
 Emitted when the child has written a chunk of data to STDOUT or STDERR.
 
+=head2 timeout
+
+  $self->emit(read_timeout => sub { my($self) = @_;});
+
+Emitted when the read event is not triggered for more the $self->read_timeout seconds.
+
 =head1 ATTRIBUTES
 
 =head2 ioloop
@@ -115,11 +126,17 @@ Holds a L<Mojo::IOLoop> object.
 
 Holds the child process ID.
 
+=head2 read_timeout
+
+a read_timeout event is triggered if no read events happen for more than read_timeout seconds.
+
 =head2 reactor
 
 DEPRECATED.
 
 =cut
+
+has 'read_timeout';
 
 sub pid { shift->{pid} || 0; }
 has ioloop => sub { Mojo::IOLoop->singleton; };
@@ -195,6 +212,8 @@ sub start {
   $self;
 }
 
+has '_read_timeout_id';
+
 sub _start {
   local ($?, $!);
   my ($self, $args) = @_;
@@ -250,6 +269,14 @@ sub _start {
         }
       }
     );
+    if (my $timeout = $self->read_timeout){
+        $self->_read_timeout_id(
+            $self->ioloop->timer($timeout => sub {
+                $self->emit('read_timeout');
+                $self->_read_timeout_id(undef);
+            })
+        );
+    };
     $self->ioloop->reactor->watch($stdout_read, 1, 0);
     $self->_watch_pid($pid);
     $self->_write;
@@ -349,6 +376,7 @@ sub _cleanup {
   $reactor->remove(delete $self->{delay})       if $self->{delay};
 }
 
+
 sub _read {
   my $self        = shift;
   my $stdout_read = $self->{stdout_read} or return;
@@ -359,6 +387,18 @@ sub _read {
   return unless defined $read;
   return unless $read;
   warn "[$self->{pid}] >>> @{[ESC($buffer)]}\n" if DEBUG;
+  if (my $timer = $self->_read_timeout_id){
+    $self->ioloop->reactor->again($timer);
+  }
+  elsif (my $timeout = $self->read_timeout){
+      Scalar::Util::weaken($self);
+      $self->_read_timeout_id(
+          $self->ioloop->timer($timeout => sub {
+              $self->emit('read_timeout');
+              $self->_read_timeout_id(undef);
+          })
+      );
+  }
   $self->emit(read => $buffer);
 }
 
