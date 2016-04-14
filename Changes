@@ -2,6 +2,7 @@ Revision history for perl distribution Mojo-IOLoop-ReadWriteFork
 
 0.18 Not Released
  - Improved documentation
+ - Add conduit() attribute
 
 0.17 2016-03-10T22:41:54+0100
  - Improve tests on FreeBSD

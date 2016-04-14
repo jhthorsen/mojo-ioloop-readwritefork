@@ -29,6 +29,7 @@ our @SAFE_SIG = grep {
   )$/x
 } keys %SIG;
 
+has conduit => 'pipe';
 sub pid { shift->{pid} || 0; }
 has ioloop => sub { Mojo::IOLoop->singleton; };
 sub reactor { warn "DEPRECATED! Use \$self->ioloop->reactor; instead"; shift->ioloop->reactor; }
@@ -50,10 +51,11 @@ sub start {
   my $self = shift;
   my $args = ref $_[0] ? $_[0] : {@_};
 
+  $self->conduit($args->{conduit}) if $args->{conduit};
+
   $args->{env}   = {%ENV};
   $self->{errno} = 0;
   $args->{program} or die 'program is required input';
-  $args->{conduit} ||= 'pipe';
   $args->{program_args} ||= [];
   ref $args->{program_args} eq 'ARRAY' or die 'program_args need to be an array';
   Scalar::Util::weaken($self);
@@ -64,22 +66,23 @@ sub start {
 sub _start {
   local ($?, $!);
   my ($self, $args) = @_;
+  my $conduit = $self->conduit;
   my ($stdout_read, $stdout_write);
   my ($stdin_read,  $stdin_write);
   my ($errno,       $pid);
 
-  if ($args->{conduit} eq 'pipe') {
+  if ($conduit eq 'pipe') {
     pipe $stdout_read, $stdout_write or return $self->emit(error => "pipe: $!");
     pipe $stdin_read,  $stdin_write  or return $self->emit(error => "pipe: $!");
     select +(select($stdout_write), $| = 1)[0];
     select +(select($stdin_write),  $| = 1)[0];
   }
-  elsif ($args->{conduit} eq 'pty') {
+  elsif ($conduit eq 'pty') {
     $stdin_write = $stdout_read = IO::Pty->new;
   }
   else {
-    warn "Invalid conduit ($args->{conduit})\n" if DEBUG;
-    return $self->emit(error => "Invalid conduit ($args->{conduit})");
+    warn "Invalid conduit ($conduit)\n" if DEBUG;
+    return $self->emit(error => "Invalid conduit ($conduit)");
   }
 
   $pid = fork;
@@ -121,7 +124,7 @@ sub _start {
     $self->_write;
   }
   else {    # child ===========================================================
-    if ($args->{conduit} eq 'pty') {
+    if ($conduit eq 'pty') {
       $stdin_write->make_slave_controlling_terminal;
       $stdin_read = $stdout_write = $stdin_write->slave;
       $stdin_read->set_raw if $args->{raw};
@@ -337,6 +340,13 @@ Emitted when the child has written a chunk of data to STDOUT or STDERR.
 
 =head1 ATTRIBUTES
 
+=head2 conduit
+
+  $str  = $self->conduit;
+  $self = $self->conduit("pty");
+
+Used to set the conduit. Can be either "pty" or "pipe" (default).
+
 =head2 ioloop
 
   $ioloop = $self->ioloop;
@@ -371,15 +381,10 @@ Simpler version of L</start>.
 =head2 start
 
   $self->start(
-    program => sub { my @program_args = @_; ... },
-    program_args => [ @data ],
-  );
-
-  $self->start(
-    program => $str,
-    program_args => [@str],
-    conduit => $str, # pipe or pty
-    raw => $bool,
+    program            => $str,
+    program_args       => [@str],
+    conduit            => $str,      # pipe or pty
+    raw                => $bool,
     clone_winsize_from => \*STDIN,
   );
 
