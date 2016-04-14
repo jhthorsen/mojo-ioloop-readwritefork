@@ -278,8 +278,9 @@ Mojo::IOLoop::ReadWriteFork - Fork a process and read/write from it
 
 =head1 DESCRIPTION
 
-This class enable you to fork children which you can write data to
-and emit events when the child prints to STDERR or STDOUT.
+This class enable you to fork a child process and L</read> and L</write> data
+to. You can also L<send signals|/kill> to the child and see when the process
+ends.
 
 Patches that enable the L</read> event to see the difference between STDERR
 and STDOUT are more than welcome.
@@ -288,28 +289,26 @@ and STDOUT are more than welcome.
 
 =head2 Standalone
 
-  my $fork = Mojo::IOLoop::ReadWriteFork->new;
-  my $cat_result = '';
+  my $fork       = Mojo::IOLoop::ReadWriteFork->new;
+  my $cat_result = "";
 
-  $fork->on(error => sub {
-    my($fork, $error) = @_;
-    warn $error;
-  });
-  $fork->on(close => sub {
-    my($fork, $exit_value, $signal) = @_;
-    warn "got close event";
-    Mojo::IOLoop->stop;
-  });
+  # Emitted if something terrible happens
+  $fork->on(error => sub { my ($fork, $error) = @_; warn $error; });
+
+  # Emitted when the child completes
+  $fork->on(close => sub { my ($fork, $exit_value, $signal) = @_; Mojo::IOLoop->stop; });
+
+  # Emitted when the child prints to STDOUT or STDERR
   $fork->on(read => sub {
-    my($fork, $buffer) = @_; # $buffer = both STDERR and STDOUT
-    $cat_result .= $buffer;
+    my ($fork, $buf) = @_;
+    print qq(Child process sent us "$buf");
   });
 
-  $fork->start(
-    program => 'bash',
-    program_args => [ -c => 'echo $YIKES foo bar baz' ],
-    conduit => 'pty',
-  );
+  # Need to set "conduit" for bash, ssh, and other programs that require a pty
+  $fork->conduit("pty");
+
+  # Start the application
+  $fork->run("bash", -c => q(echo $YIKES foo bar baz)]);
 
 =head2 In a Mojolicios::Controller
 
@@ -319,20 +318,20 @@ See L<https://github.com/jhthorsen/mojo-ioloop-readwritefork/tree/master/example
 
 =head2 close
 
-  $self->emit(close => sub { my($self, $exit_value, $signal) = @_; });
+  $self->on(close => sub { my ($self, $exit_value, $signal) = @_; });
 
 Emitted when the child process exit.
 
 =head2 error
 
-  $self->emit(error => sub { my($self, $str) = @_; });
+  $self->on(error => sub { my ($self, $str) = @_; });
 
 Emitted when when the there is an issue with creating, writing or reading
 from the child process.
 
 =head2 read
 
-  $self->emit(read => sub { my($self, $chunk) = @_; });
+  $self->on(read => sub { my ($self, $chunk) = @_; });
 
 Emitted when the child has written a chunk of data to STDOUT or STDERR.
 
@@ -410,6 +409,17 @@ Example:
   $bool = $self->kill(15); # default
 
 Used to signal the child.
+
+=head1 SEE ALSO
+
+L<Mojo::IOLoop::ForkCall>.
+
+=head1 COPYRIGHT AND LICENSE
+
+Copyright (C) 2013-2016, Jan Henning Thorsen
+
+This program is free software, you can redistribute it and/or modify it under
+the terms of the Artistic License version 2.0.
 
 =head1 AUTHOR
 
