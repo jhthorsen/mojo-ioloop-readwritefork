@@ -32,7 +32,6 @@ our @SAFE_SIG = grep {
 has conduit => 'pipe';
 sub pid { shift->{pid} || 0; }
 has ioloop => sub { Mojo::IOLoop->singleton; };
-sub reactor { warn "DEPRECATED! Use \$self->ioloop->reactor; instead"; shift->ioloop->reactor; }
 
 sub close {
   my $self = shift;
@@ -359,10 +358,6 @@ Holds a L<Mojo::IOLoop> object.
   $int = $self->pid;
 
 Holds the child process ID.
-
-=head2 reactor
-
-DEPRECATED.
 
 =head1 METHODS
 
