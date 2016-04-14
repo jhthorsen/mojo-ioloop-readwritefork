@@ -1,5 +1,9 @@
 Revision history for perl distribution Mojo-IOLoop-ReadWriteFork
 
+0.19 Not Released
+ - Add missing documentation for CODE passed on to run() / start()
+ - Change conduit() into holding a hash.
+
 0.18 2016-04-14T09:54:31+0200
  - Improved documentation
  - Add conduit() attribute

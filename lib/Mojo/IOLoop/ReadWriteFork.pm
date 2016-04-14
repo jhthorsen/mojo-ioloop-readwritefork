@@ -29,7 +29,7 @@ our @SAFE_SIG = grep {
   )$/x
 } keys %SIG;
 
-has conduit => 'pipe';
+has conduit => sub { +{type => 'pipe'} };
 sub pid { shift->{pid} || 0; }
 has ioloop => sub { Mojo::IOLoop->singleton; };
 
@@ -47,13 +47,14 @@ sub run {
 }
 
 sub start {
-  my $self = shift;
-  my $args = ref $_[0] ? $_[0] : {@_};
-
-  $self->conduit($args->{conduit}) if $args->{conduit};
+  my $self    = shift;
+  my $args    = ref $_[0] ? $_[0] : {@_};
+  my $conduit = $self->conduit;
 
   $args->{env}   = {%ENV};
   $self->{errno} = 0;
+  $args->{$_} //= $conduit->{$_} for keys %$conduit;
+  $args->{conduit} ||= delete $args->{type};
   $args->{program} or die 'program is required input';
   $args->{program_args} ||= [];
   ref $args->{program_args} eq 'ARRAY' or die 'program_args need to be an array';
@@ -65,23 +66,22 @@ sub start {
 sub _start {
   local ($?, $!);
   my ($self, $args) = @_;
-  my $conduit = $self->conduit;
   my ($stdout_read, $stdout_write);
   my ($stdin_read,  $stdin_write);
   my ($errno,       $pid);
 
-  if ($conduit eq 'pipe') {
+  if ($args->{conduit} eq 'pipe') {
     pipe $stdout_read, $stdout_write or return $self->emit(error => "pipe: $!");
     pipe $stdin_read,  $stdin_write  or return $self->emit(error => "pipe: $!");
     select +(select($stdout_write), $| = 1)[0];
     select +(select($stdin_write),  $| = 1)[0];
   }
-  elsif ($conduit eq 'pty') {
+  elsif ($args->{conduit} eq 'pty') {
     $stdin_write = $stdout_read = IO::Pty->new;
   }
   else {
-    warn "Invalid conduit ($conduit)\n" if DEBUG;
-    return $self->emit(error => "Invalid conduit ($conduit)");
+    warn "Invalid conduit ($args->{conduit})\n" if DEBUG;
+    return $self->emit(error => "Invalid conduit ($args->{conduit})");
   }
 
   $pid = fork;
@@ -123,7 +123,7 @@ sub _start {
     $self->_write;
   }
   else {    # child ===========================================================
-    if ($conduit eq 'pty') {
+    if ($args->{conduit} eq 'pty') {
       $stdin_write->make_slave_controlling_terminal;
       $stdin_read = $stdout_write = $stdin_write->slave;
       $stdin_read->set_raw if $args->{raw};
@@ -278,21 +278,9 @@ Mojo::IOLoop::ReadWriteFork - Fork a process and read/write from it
 
 0.18
 
-=head1 DESCRIPTION
-
-This class enable you to fork a child process and L</read> and L</write> data
-to. You can also L<send signals|/kill> to the child and see when the process
-ends.
-
-Patches that enable the L</read> event to see the difference between STDERR
-and STDOUT are more than welcome.
-
 =head1 SYNOPSIS
 
-=head2 Standalone
-
-  my $fork       = Mojo::IOLoop::ReadWriteFork->new;
-  my $cat_result = "";
+  my $fork = Mojo::IOLoop::ReadWriteFork->new;
 
   # Emitted if something terrible happens
   $fork->on(error => sub { my ($fork, $error) = @_; warn $error; });
@@ -307,14 +295,25 @@ and STDOUT are more than welcome.
   });
 
   # Need to set "conduit" for bash, ssh, and other programs that require a pty
-  $fork->conduit("pty");
+  $fork->conduit({type => "pty"});
 
   # Start the application
-  $fork->run("bash", -c => q(echo $YIKES foo bar baz)]);
+  $fork->run("bash", -c => q(echo $YIKES foo bar baz));
 
-=head2 In a Mojolicios::Controller
+See also
+L<https://github.com/jhthorsen/mojo-ioloop-readwritefork/tree/master/example/tail.pl>
+for an example usage from a L<Mojo::Controller>.
 
-See L<https://github.com/jhthorsen/mojo-ioloop-readwritefork/tree/master/example/tail.pl>.
+=head1 DESCRIPTION
+
+This class enable you to fork a child process and L</read> and L</write> data
+to. You can also L<send signals|/kill> to the child and see when the process
+ends. The child process can be an external program (bash, telnet, ffmpeg, ...)
+or a CODE block running perl.
+
+L<Patches|https://github.com/jhthorsen/mojo-ioloop-readwritefork/pulls> that
+enable the L</read> event to see the difference between STDERR and STDOUT are
+more than welcome.
 
 =head1 EVENTS
 
@@ -333,7 +332,7 @@ from the child process.
 
 =head2 read
 
-  $self->on(read => sub { my ($self, $chunk) = @_; });
+  $self->on(read => sub { my ($self, $buf) = @_; });
 
 Emitted when the child has written a chunk of data to STDOUT or STDERR.
 
@@ -341,10 +340,12 @@ Emitted when the child has written a chunk of data to STDOUT or STDERR.
 
 =head2 conduit
 
-  $str  = $self->conduit;
-  $self = $self->conduit("pty");
+  $hash = $self->conduit;
+  $self = $self->conduit({type => "pipe"});
 
-Used to set the conduit. Can be either "pty" or "pipe" (default).
+Used to set the conduit and conduit options. Example:
+
+  $self->conduit({raw => 1, type => "pty"});
 
 =head2 ioloop
 
@@ -370,23 +371,53 @@ Close STDIN stream to the child process immediately.
 =head2 run
 
   $self = $self->run($program, @program_args);
+  $self = $self->run(\&Some::Perl::function, @function_args);
 
-Simpler version of L</start>.
+Simpler version of L</start>. Can either start an application or run a perl
+function.
 
 =head2 start
 
-  $self->start(
-    program            => $str,
-    program_args       => [@str],
-    conduit            => $str,      # pipe or pty
-    raw                => $bool,
-    clone_winsize_from => \*STDIN,
-  );
+  $self = $self->start(\%args);
 
-Used to fork and exec a child process.
+Used to fork and exec a child process. C<%args> can have:
 
-L<raw|IO::Pty> and C<clone_winsize_from|IO::Pty> only makes sense if
-C<conduit> is "pty".
+=over 2
+
+=item * program
+
+Either an application or a CODE ref.
+
+=item * program_args
+
+A list of options passed on to L</program> or as input to the CODE ref.
+
+Note that this module will start L</program> with this code:
+
+  exec $program, @$program_args;
+
+This means that the code is subject for
+L<shell injection|https://en.wikipedia.org/wiki/Code_injection#Shell_injection>
+unless invoked with more than one argument. This is considered a feature, but
+something you should be avare of. See also L<perlfunc/exec> for more details.
+
+=item * conduit
+
+Either "pipe" (default) or "pty". "pty" will use L<IO::Pty> to simulate a
+"pty", while "pipe" will just use L<perlfunc/pipe>. This can also be specified
+by using the L</conduit> attribute.
+
+=item * clone_winsize_from
+
+See L<IO::Pty/clone_winsize_from>. This only makes sense if L</conduit> is set
+to "pty". This can also be specified by using the L</conduit> attribute.
+
+=item * raw
+
+See L<IO::Pty/set_raw>. This only makes sense if L</conduit> is set to "pty".
+This can also be specified by using the L</conduit> attribute.
+
+=back
 
 =head2 write
 
@@ -413,6 +444,8 @@ Used to signal the child.
 =head1 SEE ALSO
 
 L<Mojo::IOLoop::ForkCall>.
+
+L<https://github.com/jhthorsen/mojo-ioloop-readwritefork/tree/master/example/tail.pl>
 
 =head1 COPYRIGHT AND LICENSE
 
