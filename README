@@ -2,39 +2,38 @@ NAME
     Mojo::IOLoop::ReadWriteFork - Fork a process and read/write from it
 
 VERSION
-    0.17
+    0.18
 
 DESCRIPTION
-    This class enable you to fork children which you can write data to and
-    emit events when the child prints to STDERR or STDOUT.
+    This class enable you to fork a child process and "read" and "write"
+    data to. You can also send signals to the child and see when the process
+    ends.
 
     Patches that enable the "read" event to see the difference between
     STDERR and STDOUT are more than welcome.
 
 SYNOPSIS
   Standalone
-      my $fork = Mojo::IOLoop::ReadWriteFork->new;
-      my $cat_result = '';
+      my $fork       = Mojo::IOLoop::ReadWriteFork->new;
+      my $cat_result = "";
 
-      $fork->on(error => sub {
-        my($fork, $error) = @_;
-        warn $error;
-      });
-      $fork->on(close => sub {
-        my($fork, $exit_value, $signal) = @_;
-        warn "got close event";
-        Mojo::IOLoop->stop;
-      });
+      # Emitted if something terrible happens
+      $fork->on(error => sub { my ($fork, $error) = @_; warn $error; });
+
+      # Emitted when the child completes
+      $fork->on(close => sub { my ($fork, $exit_value, $signal) = @_; Mojo::IOLoop->stop; });
+
+      # Emitted when the child prints to STDOUT or STDERR
       $fork->on(read => sub {
-        my($fork, $buffer) = @_; # $buffer = both STDERR and STDOUT
-        $cat_result .= $buffer;
+        my ($fork, $buf) = @_;
+        print qq(Child process sent us "$buf");
       });
 
-      $fork->start(
-        program => 'bash',
-        program_args => [ -c => 'echo $YIKES foo bar baz' ],
-        conduit => 'pty',
-      );
+      # Need to set "conduit" for bash, ssh, and other programs that require a pty
+      $fork->conduit("pty");
+
+      # Start the application
+      $fork->run("bash", -c => q(echo $YIKES foo bar baz)]);
 
   In a Mojolicios::Controller
     See
@@ -43,22 +42,28 @@ SYNOPSIS
 
 EVENTS
   close
-      $self->emit(close => sub { my($self, $exit_value, $signal) = @_; });
+      $self->on(close => sub { my ($self, $exit_value, $signal) = @_; });
 
     Emitted when the child process exit.
 
   error
-      $self->emit(error => sub { my($self, $str) = @_; });
+      $self->on(error => sub { my ($self, $str) = @_; });
 
     Emitted when when the there is an issue with creating, writing or
     reading from the child process.
 
   read
-      $self->emit(read => sub { my($self, $chunk) = @_; });
+      $self->on(read => sub { my ($self, $chunk) = @_; });
 
     Emitted when the child has written a chunk of data to STDOUT or STDERR.
 
 ATTRIBUTES
+  conduit
+      $str  = $self->conduit;
+      $self = $self->conduit("pty");
+
+    Used to set the conduit. Can be either "pty" or "pipe" (default).
+
   ioloop
       $ioloop = $self->ioloop;
       $self = $self->ioloop(Mojo::IOLoop->singleton);
@@ -69,9 +74,6 @@ ATTRIBUTES
       $int = $self->pid;
 
     Holds the child process ID.
-
-  reactor
-    DEPRECATED.
 
 METHODS
   close
@@ -86,15 +88,10 @@ METHODS
 
   start
       $self->start(
-        program => sub { my @program_args = @_; ... },
-        program_args => [ @data ],
-      );
-
-      $self->start(
-        program => $str,
-        program_args => [@str],
-        conduit => $str, # pipe or pty
-        raw => $bool,
+        program            => $str,
+        program_args       => [@str],
+        conduit            => $str,      # pipe or pty
+        raw                => $bool,
         clone_winsize_from => \*STDIN,
       );
 
@@ -122,6 +119,15 @@ METHODS
       $bool = $self->kill(15); # default
 
     Used to signal the child.
+
+SEE ALSO
+    Mojo::IOLoop::ForkCall.
+
+COPYRIGHT AND LICENSE
+    Copyright (C) 2013-2016, Jan Henning Thorsen
+
+    This program is free software, you can redistribute it and/or modify it
+    under the terms of the Artistic License version 2.0.
 
 AUTHOR
     Jan Henning Thorsen - "jhthorsen@cpan.org"

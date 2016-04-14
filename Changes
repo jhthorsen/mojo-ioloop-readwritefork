@@ -1,6 +1,6 @@
 Revision history for perl distribution Mojo-IOLoop-ReadWriteFork
 
-0.18 Not Released
+0.18 2016-04-14T09:54:31+0200
  - Improved documentation
  - Add conduit() attribute
  - Remove deprecated reactor() attribute
