@@ -1,54 +1,4 @@
 package Mojo::IOLoop::ReadWriteFork;
-
-=head1 NAME
-
-Mojo::IOLoop::ReadWriteFork - Fork a process and read/write from it
-
-=head1 VERSION
-
-0.17
-
-=head1 DESCRIPTION
-
-This class enable you to fork children which you can write data to
-and emit events when the child prints to STDERR or STDOUT.
-
-Patches that enable the L</read> event to see the difference between STDERR
-and STDOUT are more than welcome.
-
-=head1 SYNOPSIS
-
-=head2 Standalone
-
-  my $fork = Mojo::IOLoop::ReadWriteFork->new;
-  my $cat_result = '';
-
-  $fork->on(error => sub {
-    my($fork, $error) = @_;
-    warn $error;
-  });
-  $fork->on(close => sub {
-    my($fork, $exit_value, $signal) = @_;
-    warn "got close event";
-    Mojo::IOLoop->stop;
-  });
-  $fork->on(read => sub {
-    my($fork, $buffer) = @_; # $buffer = both STDERR and STDOUT
-    $cat_result .= $buffer;
-  });
-
-  $fork->start(
-    program => 'bash',
-    program_args => [ -c => 'echo $YIKES foo bar baz' ],
-    conduit => 'pty',
-  );
-
-=head2 In a Mojolicios::Controller
-
-See L<https://github.com/jhthorsen/mojo-ioloop-readwritefork/tree/master/example/tail.pl>.
-
-=cut
-
 use Mojo::Base 'Mojo::EventEmitter';
 use Mojo::IOLoop;
 use Mojo::Util;
@@ -79,61 +29,9 @@ our @SAFE_SIG = grep {
   )$/x
 } keys %SIG;
 
-=head1 EVENTS
-
-=head2 close
-
-  $self->emit(close => sub { my($self, $exit_value, $signal) = @_; });
-
-Emitted when the child process exit.
-
-=head2 error
-
-  $self->emit(error => sub { my($self, $str) = @_; });
-
-Emitted when when the there is an issue with creating, writing or reading
-from the child process.
-
-=head2 read
-
-  $self->emit(read => sub { my($self, $chunk) = @_; });
-
-Emitted when the child has written a chunk of data to STDOUT or STDERR.
-
-=head1 ATTRIBUTES
-
-=head2 ioloop
-
-  $ioloop = $self->ioloop;
-  $self = $self->ioloop(Mojo::IOLoop->singleton);
-
-Holds a L<Mojo::IOLoop> object.
-
-=head2 pid
-
-  $int = $self->pid;
-
-Holds the child process ID.
-
-=head2 reactor
-
-DEPRECATED.
-
-=cut
-
 sub pid { shift->{pid} || 0; }
 has ioloop => sub { Mojo::IOLoop->singleton; };
 sub reactor { warn "DEPRECATED! Use \$self->ioloop->reactor; instead"; shift->ioloop->reactor; }
-
-=head1 METHODS
-
-=head2 close
-
-  $self = $self->close("stdin");
-
-Close STDIN stream to the child process immediately.
-
-=cut
 
 sub close {
   my $self = shift;
@@ -143,42 +41,10 @@ sub close {
   $self;
 }
 
-=head2 run
-
-  $self = $self->run($program, @program_args);
-
-Simpler version of L</start>.
-
-=cut
-
 sub run {
   my ($self, $program, @program_args) = @_;
-
   $self->start(program => $program, program_args => \@program_args);
-  $self;
 }
-
-=head2 start
-
-  $self->start(
-    program => sub { my @program_args = @_; ... },
-    program_args => [ @data ],
-  );
-
-  $self->start(
-    program => $str,
-    program_args => [@str],
-    conduit => $str, # pipe or pty
-    raw => $bool,
-    clone_winsize_from => \*STDIN,
-  );
-
-Used to fork and exec a child process.
-
-L<raw|IO::Pty> and C<clone_winsize_from|IO::Pty> only makes sense if
-C<conduit> is "pty".
-
-=cut
 
 sub start {
   my $self = shift;
@@ -291,23 +157,6 @@ sub _start {
   }
 }
 
-=head2 write
-
-  $self = $self->write($chunk);
-  $self = $self->write($chunk, $cb);
-
-Used to write data to the child process STDIN. An optional callback will be
-called once STDIN is drained.
-
-Example:
-
-  $self->write("some data\n", sub {
-    my ($self) = @_;
-    $self->close;
-  });
-
-=cut
-
 sub write {
   my ($self, $chunk, $cb) = @_;
 
@@ -316,15 +165,6 @@ sub write {
   $self->_write if $self->{stdin_write};
   $self;
 }
-
-=head2 kill
-
-  $bool = $self->kill;
-  $bool = $self->kill(15); # default
-
-Used to signal the child.
-
-=cut
 
 sub kill {
   my $self   = shift;
@@ -424,10 +264,155 @@ sub _write {
 
 sub DESTROY { shift->_cleanup }
 
+1;
+
+=encoding utf8
+
+=head1 NAME
+
+Mojo::IOLoop::ReadWriteFork - Fork a process and read/write from it
+
+=head1 VERSION
+
+0.17
+
+=head1 DESCRIPTION
+
+This class enable you to fork children which you can write data to
+and emit events when the child prints to STDERR or STDOUT.
+
+Patches that enable the L</read> event to see the difference between STDERR
+and STDOUT are more than welcome.
+
+=head1 SYNOPSIS
+
+=head2 Standalone
+
+  my $fork = Mojo::IOLoop::ReadWriteFork->new;
+  my $cat_result = '';
+
+  $fork->on(error => sub {
+    my($fork, $error) = @_;
+    warn $error;
+  });
+  $fork->on(close => sub {
+    my($fork, $exit_value, $signal) = @_;
+    warn "got close event";
+    Mojo::IOLoop->stop;
+  });
+  $fork->on(read => sub {
+    my($fork, $buffer) = @_; # $buffer = both STDERR and STDOUT
+    $cat_result .= $buffer;
+  });
+
+  $fork->start(
+    program => 'bash',
+    program_args => [ -c => 'echo $YIKES foo bar baz' ],
+    conduit => 'pty',
+  );
+
+=head2 In a Mojolicios::Controller
+
+See L<https://github.com/jhthorsen/mojo-ioloop-readwritefork/tree/master/example/tail.pl>.
+
+=head1 EVENTS
+
+=head2 close
+
+  $self->emit(close => sub { my($self, $exit_value, $signal) = @_; });
+
+Emitted when the child process exit.
+
+=head2 error
+
+  $self->emit(error => sub { my($self, $str) = @_; });
+
+Emitted when when the there is an issue with creating, writing or reading
+from the child process.
+
+=head2 read
+
+  $self->emit(read => sub { my($self, $chunk) = @_; });
+
+Emitted when the child has written a chunk of data to STDOUT or STDERR.
+
+=head1 ATTRIBUTES
+
+=head2 ioloop
+
+  $ioloop = $self->ioloop;
+  $self = $self->ioloop(Mojo::IOLoop->singleton);
+
+Holds a L<Mojo::IOLoop> object.
+
+=head2 pid
+
+  $int = $self->pid;
+
+Holds the child process ID.
+
+=head2 reactor
+
+DEPRECATED.
+
+=head1 METHODS
+
+=head2 close
+
+  $self = $self->close("stdin");
+
+Close STDIN stream to the child process immediately.
+
+=head2 run
+
+  $self = $self->run($program, @program_args);
+
+Simpler version of L</start>.
+
+=head2 start
+
+  $self->start(
+    program => sub { my @program_args = @_; ... },
+    program_args => [ @data ],
+  );
+
+  $self->start(
+    program => $str,
+    program_args => [@str],
+    conduit => $str, # pipe or pty
+    raw => $bool,
+    clone_winsize_from => \*STDIN,
+  );
+
+Used to fork and exec a child process.
+
+L<raw|IO::Pty> and C<clone_winsize_from|IO::Pty> only makes sense if
+C<conduit> is "pty".
+
+=head2 write
+
+  $self = $self->write($chunk);
+  $self = $self->write($chunk, $cb);
+
+Used to write data to the child process STDIN. An optional callback will be
+called once STDIN is drained.
+
+Example:
+
+  $self->write("some data\n", sub {
+    my ($self) = @_;
+    $self->close;
+  });
+
+=head2 kill
+
+  $bool = $self->kill;
+  $bool = $self->kill(15); # default
+
+Used to signal the child.
+
 =head1 AUTHOR
 
 Jan Henning Thorsen - C<jhthorsen@cpan.org>
 
 =cut
-
-1;
