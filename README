@@ -2,7 +2,7 @@ NAME
     Mojo::IOLoop::ReadWriteFork - Fork a process and read/write from it
 
 VERSION
-    0.19
+    0.20
 
 SYNOPSIS
       my $fork = Mojo::IOLoop::ReadWriteFork->new;
@@ -111,6 +111,11 @@ METHODS
       invoked with more than one argument. This is considered a feature, but
       something you should be avare of. See also "exec" in perlfunc for more
       details.
+
+    * env
+
+      Passing in "env" will override the default set of environment
+      variables, stored in %ENV.
 
     * conduit
 

@@ -1,6 +1,6 @@
 Revision history for perl distribution Mojo-IOLoop-ReadWriteFork
 
-0.20 Not Released
+0.20 2016-04-18T14:51:14+0200
  - Add support for passing in %ENV #5
 
 0.19 2016-04-14T11:54:18+0200
