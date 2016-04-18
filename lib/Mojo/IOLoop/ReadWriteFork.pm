@@ -2,7 +2,7 @@ package Mojo::IOLoop::ReadWriteFork;
 use Mojo::Base 'Mojo::EventEmitter';
 use Mojo::IOLoop;
 use Mojo::Util;
-use Errno qw( EAGAIN ECONNRESET EINTR EPIPE EWOULDBLOCK );
+use Errno qw(EAGAIN ECONNRESET EINTR EPIPE EWOULDBLOCK);
 use IO::Pty;
 use POSIX ':sys_wait_h';
 use Scalar::Util ();
@@ -42,8 +42,9 @@ sub close {
 }
 
 sub run {
+  my $args = ref $_[-1] eq 'HASH' ? pop : {};
   my ($self, $program, @program_args) = @_;
-  $self->start(program => $program, program_args => \@program_args);
+  $self->start({%$args, program => $program, program_args => \@program_args});
 }
 
 sub start {
@@ -51,10 +52,10 @@ sub start {
   my $args    = ref $_[0] ? $_[0] : {@_};
   my $conduit = $self->conduit;
 
-  $args->{env}   = {%ENV};
-  $self->{errno} = 0;
   $args->{$_} //= $conduit->{$_} for keys %$conduit;
   $args->{conduit} ||= delete $args->{type};
+  $args->{env} ||= {%ENV};
+  $self->{errno} = 0;
   $args->{program} or die 'program is required input';
   $args->{program_args} ||= [];
   ref $args->{program_args} eq 'ARRAY' or die 'program_args need to be an array';
@@ -141,7 +142,7 @@ sub _start {
     select STDOUT;
     $| = 1;
 
-    $ENV{$_} = $args->{env}{$_} for keys %{$args->{env}};
+    %ENV = %{$args->{env}};
 
     if (ref $args->{program} eq 'CODE') {
       $! = 0;
@@ -400,6 +401,11 @@ This means that the code is subject for
 L<shell injection|https://en.wikipedia.org/wiki/Code_injection#Shell_injection>
 unless invoked with more than one argument. This is considered a feature, but
 something you should be avare of. See also L<perlfunc/exec> for more details.
+
+=item * env
+
+Passing in C<env> will override the default set of environment variables,
+stored in C<%ENV>.
 
 =item * conduit
 

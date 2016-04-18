@@ -1,5 +1,8 @@
 Revision history for perl distribution Mojo-IOLoop-ReadWriteFork
 
+0.20 Not Released
+ - Add support for passing in %ENV #5
+
 0.19 2016-04-14T11:54:18+0200
  - Add missing documentation for CODE passed on to run() / start()
  - Change conduit() into holding a hash.

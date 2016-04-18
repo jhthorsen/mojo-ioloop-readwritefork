@@ -13,15 +13,13 @@ $fork->on(close => sub { my ($fork, $exit_value, $signal) = @_; Mojo::IOLoop->st
 $fork->on(read => sub { my ($fork, $buf) = @_; $output .= $buf });
 $fork->conduit({type => "pty"});
 
-{
-  local $ENV{YIKES} = 'too cool';
-  $fork->run("bash", -c => q(echo $YIKES foo bar baz));
-}
+$ENV{RWF_INVISIBLE} = 'invisble';
+$fork->run(qw(bash -c), q(echo "$RWF_VISIBLE. RWF_INVISIBLE=$RWF_INVISIBLE."), {env => {RWF_VISIBLE => 'Hello'}});
 
 is $fork->pid, 0, 'no pid' or diag $fork->pid;
 Mojo::IOLoop->timer(3 => sub { Mojo::IOLoop->stop });    # guard
 Mojo::IOLoop->start;
 like $fork->pid, qr{^[1-9]\d+$}, 'got pid' or diag $fork->pid;
-like $output, qr/too cool foo bar baz\W{1,2}/, 'got stdout from "echo"' or diag $output;
+like $output, qr/Hello. RWF_INVISIBLE=\./, 'got stdout from "echo"' or diag $output;
 
 done_testing;
