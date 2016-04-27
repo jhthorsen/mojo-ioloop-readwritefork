@@ -20,6 +20,12 @@ is $fork->pid, 0, 'no pid' or diag $fork->pid;
 Mojo::IOLoop->timer(3 => sub { Mojo::IOLoop->stop });    # guard
 Mojo::IOLoop->start;
 like $fork->pid, qr{^[1-9]\d+$}, 'got pid' or diag $fork->pid;
-like $output, qr/Hello. RWF_INVISIBLE=\./, 'got stdout from "echo"' or diag $output;
+
+if ($output =~ /Can't exec/) {                           # "Can't exec "bash": ..."
+  like $output, qr/Can't exec/, 'could not start bash';
+}
+else {
+  like $output, qr/Hello. RWF_INVISIBLE=\./, 'got stdout from "echo"' or diag $output;
+}
 
 done_testing;
