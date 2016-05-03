@@ -1,6 +1,6 @@
 Revision history for perl distribution Mojo-IOLoop-ReadWriteFork
 
-0.21 Not Released
+0.21 2016-05-03T14:27:40+0200
  - Fix failing t/synopsis.t #6
 
 0.20 2016-04-18T14:51:14+0200
