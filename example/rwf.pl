@@ -13,7 +13,6 @@ app {
   my @rwf;
 
   for my $host (@hosts) {
-    $delay->pass($host);
     my $rwf = Mojo::IOLoop::ReadWriteFork->new;
     my $cb  = $delay->begin;
     my $buf = '';
