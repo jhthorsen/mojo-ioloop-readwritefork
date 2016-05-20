@@ -4,6 +4,9 @@ use Mojo::IOLoop::ReadWriteFork;
 
 option bool => flush => 'Flush response to screen as soon as possible';
 
+documentation __FILE__;
+version 'Mojo::IOLoop::ReadWriteFork';
+
 app {
   my ($self, $command, @hosts) = @_;
   my $delay = Mojo::IOLoop->delay;
