@@ -1,6 +1,6 @@
 Revision history for perl distribution Mojo-IOLoop-ReadWriteFork
 
-0.22 Not Released
+0.22 2016-06-27T08:28:49+0200
  - Add "fork" event
 
 0.21 2016-05-03T14:27:40+0200

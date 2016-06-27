@@ -2,7 +2,7 @@ NAME
     Mojo::IOLoop::ReadWriteFork - Fork a process and read/write from it
 
 VERSION
-    0.21
+    0.22
 
 SYNOPSIS
       my $fork = Mojo::IOLoop::ReadWriteFork->new;
@@ -51,6 +51,31 @@ EVENTS
     Emitted when when the there is an issue with creating, writing or
     reading from the child process.
 
+  fork
+      $self->on(fork => sub { my ($self) = @_; });
+
+    Emitted after "fork()" has been called. Note that the child process
+    might not yet have been started. The order of things is impossible to
+    say, but it's something like this:
+
+                .------.
+                | fork |
+                '------'
+                   |
+               ___/ \_________________
+              |                       |
+              | (parent)              | (child)
+          .-------------.             |
+          | emit "fork" |    .--------------------.
+          '-------------'    | set up filehandles |
+                             '--------------------'
+                                      |
+                              .---------------.
+                              | exec $program |
+                              '---------------'
+
+    See also "pid" for example usage of this event.
+
   read
       $self->on(read => sub { my ($self, $buf) = @_; });
 
@@ -74,7 +99,17 @@ ATTRIBUTES
   pid
       $int = $self->pid;
 
-    Holds the child process ID.
+    Holds the child process ID. Note that "start" will start the process
+    after the IO loop is started. This means that the code below will not
+    work:
+
+      $fork->run("bash", -c => q(echo $YIKES foo bar baz));
+      warn $fork->pid; # pid() is not yet set
+
+    This will work though:
+
+      $fork->on(spawn => sub { my $self = shift; warn $self->pid });
+      $fork->run("bash", -c => q(echo $YIKES foo bar baz));
 
 METHODS
   close
