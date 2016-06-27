@@ -122,6 +122,7 @@ sub _start {
     $self->ioloop->reactor->watch($stdout_read, 1, 0);
     $self->_watch_pid($pid);
     $self->_write;
+    $self->emit('fork');
   }
   else {    # child ===========================================================
     if ($args->{conduit} eq 'pty') {
@@ -331,6 +332,31 @@ Emitted when the child process exit.
 Emitted when when the there is an issue with creating, writing or reading
 from the child process.
 
+=head2 fork
+
+  $self->on(fork => sub { my ($self) = @_; });
+
+Emitted after C<fork()> has been called. Note that the child process might not yet have
+been started. The order of things is impossible to say, but it's something like this:
+
+            .------.
+            | fork |
+            '------'
+               |
+           ___/ \_________________
+          |                       |
+          | (parent)              | (child)
+      .-------------.             |
+      | emit "fork" |    .--------------------.
+      '-------------'    | set up filehandles |
+                         '--------------------'
+                                  |
+                          .---------------.
+                          | exec $program |
+                          '---------------'
+
+See also L</pid> for example usage of this event.
+
 =head2 read
 
   $self->on(read => sub { my ($self, $buf) = @_; });
@@ -359,7 +385,16 @@ Holds a L<Mojo::IOLoop> object.
 
   $int = $self->pid;
 
-Holds the child process ID.
+Holds the child process ID. Note that L</start> will start the process after
+the IO loop is started. This means that the code below will not work:
+
+  $fork->run("bash", -c => q(echo $YIKES foo bar baz));
+  warn $fork->pid; # pid() is not yet set
+
+This will work though:
+
+  $fork->on(spawn => sub { my $self = shift; warn $self->pid });
+  $fork->run("bash", -c => q(echo $YIKES foo bar baz));
 
 =head1 METHODS
 
