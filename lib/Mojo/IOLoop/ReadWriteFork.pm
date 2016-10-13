@@ -18,7 +18,7 @@ sub ESC {
   $_;
 }
 
-our $VERSION = '0.22';
+our $VERSION = '0.23';
 
 our @SAFE_SIG = grep {
   not /^(
@@ -278,7 +278,7 @@ Mojo::IOLoop::ReadWriteFork - Fork a process and read/write from it
 
 =head1 VERSION
 
-0.22
+0.23
 
 =head1 SYNOPSIS
 
@@ -393,7 +393,7 @@ the IO loop is started. This means that the code below will not work:
 
 This will work though:
 
-  $fork->on(spawn => sub { my $self = shift; warn $self->pid });
+  $fork->on(fork => sub { my $self = shift; warn $self->pid });
   $fork->run("bash", -c => q(echo $YIKES foo bar baz));
 
 =head1 METHODS

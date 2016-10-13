@@ -2,7 +2,7 @@ NAME
     Mojo::IOLoop::ReadWriteFork - Fork a process and read/write from it
 
 VERSION
-    0.22
+    0.23
 
 SYNOPSIS
       my $fork = Mojo::IOLoop::ReadWriteFork->new;
@@ -108,7 +108,7 @@ ATTRIBUTES
 
     This will work though:
 
-      $fork->on(spawn => sub { my $self = shift; warn $self->pid });
+      $fork->on(fork => sub { my $self = shift; warn $self->pid });
       $fork->run("bash", -c => q(echo $YIKES foo bar baz));
 
 METHODS
