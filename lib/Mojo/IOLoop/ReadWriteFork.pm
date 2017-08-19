@@ -20,7 +20,7 @@ sub ESC {
   $_;
 }
 
-our $VERSION = '0.23';
+our $VERSION = '0.24';
 
 our @SAFE_SIG = grep {
   not /^(
@@ -283,7 +283,7 @@ Mojo::IOLoop::ReadWriteFork - Fork a process and read/write from it
 
 =head1 VERSION
 
-0.23
+0.24
 
 =head1 SYNOPSIS
 
