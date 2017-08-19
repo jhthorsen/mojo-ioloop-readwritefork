@@ -1,6 +1,7 @@
 Revision history for perl distribution Mojo-IOLoop-ReadWriteFork
 
 0.24 Not Released
+ - Fix running RWF with Minion 7.05 #9
  - Add test for leaking filehandles in Mojolicious application #7
 
 0.23 2016-10-13T10:07:18+0200

@@ -1,3 +1,4 @@
+BEGIN { $ENV{MOJO_REACTOR} = 'Mojo::Reactor::Poll' }
 use Mojo::Base -strict;
 use Mojo::IOLoop::ReadWriteFork;
 use Test::Mojo;
@@ -13,6 +14,7 @@ get '/' => sub {
   my $out  = '';
 
   $c->stash(fork => $fork);
+
   $fork->on(
     close => sub {
       my ($fork, $exit_value, $signal) = @_;
@@ -36,8 +38,6 @@ my $t = Test::Mojo->new;
 $t->get_ok('/')->status_is(200);
 
 my $before = count_fh();
-is count_fh(), $before, 'first run';
-
 $t->get_ok('/')->status_is(200);
 is count_fh(), $before, 'second run';
 
