@@ -4,6 +4,7 @@ use Mojo::IOLoop::ReadWriteFork;
 use Test::Mojo;
 use Test::More;
 
+plan skip_all => 'http://www.cpantesters.org/cpan/report/001a7fac-85d7-11e7-a074-e1beba07c9dd';
 plan skip_all => 'uptime is missing' unless grep { -x "$_/uptime" } split /:/, $ENV{PATH};
 
 use Mojolicious::Lite;
