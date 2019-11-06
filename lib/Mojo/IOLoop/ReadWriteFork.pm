@@ -1,7 +1,7 @@
 package Mojo::IOLoop::ReadWriteFork;
 use Mojo::Base 'Mojo::EventEmitter';
 
-use Errno qw(EAGAIN ECONNRESET EINTR EPIPE EWOULDBLOCK);
+use Errno qw(EAGAIN ECONNRESET EINTR EPIPE EWOULDBLOCK EIO EBADF);
 use IO::Pty;
 use Mojo::IOLoop;
 use Mojo::Util;
@@ -20,7 +20,7 @@ sub ESC {
   $_;
 }
 
-our $VERSION = '0.37';
+our $VERSION = '0.38-dave';
 
 our @SAFE_SIG = grep {
   not /^(
@@ -98,7 +98,11 @@ sub _start {
     $self->{pid}         = $pid;
     $self->{stdout_read} = $stdout_read;
     $self->{stdin_write} = $stdin_write;
-    $stdout_read->close_slave if defined $stdout_read and UNIVERSAL::isa($stdout_read, 'IO::Pty');
+    $self->{isPTY} = 0;
+    if (defined $stdout_read and UNIVERSAL::isa($stdout_read, 'IO::Pty')) {
+      $stdout_read->close_slave;
+      $self->{isPTY} = 1;
+    }
 
     Scalar::Util::weaken($self);
     $self->ioloop->reactor->io(
@@ -109,10 +113,34 @@ sub _start {
         $self->_read;
 
         # 5 = Input/output error
-        if ($self->{errno} == 5) {
+        # Not sure why this was hardcoded to 5 ... I changed for readability's sake - dave@jetcafe.org
+        if ($self->{errno} == EIO ) {
           if (my $handle = delete $self->{stdout_read}) {
             warn "[$pid] Ignoring child after $self->{errno}\n" if DEBUG;
             $reactor->watch($handle, 0, 0);
+            $self->emit( 'close' )
+          }
+        }
+        elsif ($self->{errno} == EBADF && $self->{isPTY}) {
+          # This is another ugly hack.
+          #
+          # IO::Pty is one file descriptor for both reading and writing in the
+          # parent. Thus, when you close the write descriptor with the close()
+          # method, this is also the read descript. So Mojo::Reactor there
+          # takes you at your word and subsequent reads on the now closed
+          # descriptor fail with EBADF.
+          #
+          # The hack around here is to assume EBADF on a PTY is a close
+          # event. Even if that's a bad assumption, at this point a read was
+          # tried anyway and got EBADF so I presume subsequent reads are just
+          # not going to work and deleting the filehandle isn't going to do
+          # any worse.
+          #
+          # This passed all the tests on my machine, FreeBSD 11.3.
+          #   - dave@jetcafe.org
+          warn "[$pid] Child $self->{errno} --- assuming that's a close event\n" if DEBUG;
+          if (my $handle = delete $self->{stdout_read}) {
+            warn "[$pid] ($handle) Ignoring child after $self->{errno}\n" if DEBUG;
           }
         }
         elsif ($self->{errno}) {
