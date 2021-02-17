@@ -1,7 +1,7 @@
 package Mojo::IOLoop::ReadWriteFork;
 use Mojo::Base 'Mojo::EventEmitter';
 
-use Errno qw(EAGAIN ECONNRESET EINTR EPIPE EWOULDBLOCK);
+use Errno qw(EAGAIN ECONNRESET EINTR EPIPE EWOULDBLOCK EIO);
 use IO::Pty;
 use Mojo::IOLoop;
 use Mojo::Promise;
@@ -115,23 +115,14 @@ sub _start {
     $self->ioloop->reactor->io(
       $stdout_read => sub {
         local ($?, $!);
-        my $reactor = shift;
-
         $self->_read;
-
-        # 5 = Input/output error
-        if ($self->{errno} == 5) {
-          if (my $handle = delete $self->{stdout_read}) {
-            warn "[$pid] Ignoring child after $self->{errno}\n" if DEBUG;
-            $reactor->watch($handle, 0, 0);
-          }
-        }
-        elsif ($self->{errno}) {
-          warn "[$pid] Child $self->{errno}\n" if DEBUG;
-          $self->emit(error => "Read error: $self->{errno}");
-        }
+        return unless $self->{errno};
+        warn "[$pid] Child $self->{errno}\n" if DEBUG;
+        $self->emit(error => "Read error: $self->{errno}");
       }
     );
+
+    @$self{qw(wait_eof wait_sigchld)} = (1, 1);
     $self->ioloop->reactor->watch($stdout_read, 1, 0);
     $self->_watch_pid($pid);
     $self->_write;
@@ -203,8 +194,16 @@ sub _cleanup {
   my $reactor = $self->{ioloop}{reactor} or return;
 
   delete $self->{stdin_write};
+  $reactor->remove(delete $self->{stdin_write}) if $self->{stdin_write};
   $reactor->remove(delete $self->{stdout_read}) if $self->{stdout_read};
   $reactor->remove(delete $self->{delay})       if $self->{delay};
+}
+
+sub _maybe_terminate {
+  my ($self, $pending_event) = @_;
+  delete $self->{$pending_event};
+  $self->emit(close => $self->{exit_value}, $self->{signal})->_cleanup
+    unless $self->{wait_eof} or $self->{wait_sigchld};
 }
 
 sub _read {
@@ -212,10 +211,9 @@ sub _read {
   my $stdout_read = $self->{stdout_read} or return;
   my $read        = $stdout_read->sysread(my $buffer, CHUNK_SIZE, 0);
 
-  $self->{errno} = $! // 0;
-
-  return unless defined $read;
-  return unless $read;
+  # EOF on PTY raises EIO when slave devices has closed all file descriptors
+  return $self->_maybe_terminate('wait_eof') if (!defined $read and $! == EIO) or $read == 0;
+  return $self->{errno} = $! // 0 unless defined $read;
   warn "[$self->{pid}] >>> @{[ESC($buffer)]}\n" if DEBUG;
   $self->emit(read => $buffer);
 }
@@ -224,10 +222,8 @@ sub _sigchld {
   my $self = shift;
   my ($exit_value, $signal) = ($_[1] >> 8, $_[1] & 127);
   warn "[$_[0]] Child is dead ($?/$!) $exit_value/$signal\n" if DEBUG;
-  $self or return;    # maybe $self has already gone out of scope
-  $self->_read;       # flush the rest
-  $self->_cleanup;
-  $self->emit(close => $exit_value, $signal);
+  @$self{qw(exit_value signal)} = ($exit_value, $signal);
+  $self->_maybe_terminate('wait_sigchld');
 }
 
 sub _watch_pid {
