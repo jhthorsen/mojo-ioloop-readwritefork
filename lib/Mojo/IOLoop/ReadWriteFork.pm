@@ -4,6 +4,7 @@ use Mojo::Base 'Mojo::EventEmitter';
 use Errno qw(EAGAIN ECONNRESET EINTR EPIPE EWOULDBLOCK);
 use IO::Pty;
 use Mojo::IOLoop;
+use Mojo::Promise;
 use Mojo::Util;
 use POSIX ':sys_wait_h';
 use Scalar::Util ();
@@ -43,10 +44,20 @@ sub close {
   $self;
 }
 
+sub run_p {
+  my $self = shift;
+  my $p    = Mojo::Promise->new;
+  my @cb;
+  push @cb, $self->once(close => sub { shift->unsubscribe(error => $cb[1]); $p->resolve(@_) });
+  push @cb, $self->once(error => sub { shift->unsubscribe(close => $cb[0]); $p->reject(@_) });
+  $self->run(@_);
+  return $p;
+}
+
 sub run {
   my $args = ref $_[-1] eq 'HASH' ? pop : {};
   my ($self, $program, @program_args) = @_;
-  $self->start({%$args, program => $program, program_args => \@program_args});
+  return $self->start({%$args, program => $program, program_args => \@program_args});
 }
 
 sub start {
@@ -56,19 +67,19 @@ sub start {
 
   $args->{$_} //= $conduit->{$_} for keys %$conduit;
   $args->{conduit} ||= delete $args->{type};
-  $args->{env} ||= {%ENV};
+  $args->{env}     ||= {%ENV};
   $self->{errno} = 0;
   $args->{program} or die 'program is required input';
   $args->{program_args} ||= [];
   ref $args->{program_args} eq 'ARRAY' or die 'program_args need to be an array';
   Scalar::Util::weaken($self);
   $self->{delay} = $self->ioloop->timer(0 => sub { $self->_start($args) });
-  $self;
+  return $self;
 }
 
 sub _start {
   local ($?, $!);
-  my ($self, $args) = @_;
+  my ($self,        $args) = @_;
   my ($stdout_read, $stdout_write);
   my ($stdin_read,  $stdin_write);
   my ($errno,       $pid);
@@ -130,7 +141,7 @@ sub _start {
     if ($args->{conduit} eq 'pty') {
       $stdin_write->make_slave_controlling_terminal;
       $stdin_read = $stdout_write = $stdin_write->slave;
-      $stdin_read->set_raw if $args->{raw};
+      $stdin_read->set_raw                                         if $args->{raw};
       $stdin_read->clone_winsize_from($args->{clone_winsize_from}) if $args->{clone_winsize_from};
     }
 
@@ -188,7 +199,7 @@ sub _error {
 }
 
 sub _cleanup {
-  my $self = shift;
+  my $self    = shift;
   my $reactor = $self->{ioloop}{reactor} or return;
 
   delete $self->{stdin_write};
@@ -308,6 +319,9 @@ Mojo::IOLoop::ReadWriteFork - Fork a process and read/write from it
   # Start the application
   $fork->run("bash", -c => q(echo $YIKES foo bar baz));
 
+  # Using promises
+  $fork->on(read => sub { ... })->run_p("bash", -c => q(echo $YIKES foo bar baz))->wait;
+
 See also
 L<https://github.com/jhthorsen/mojo-ioloop-readwritefork/tree/master/example/tail.pl>
 for an example usage from a L<Mojo::Controller>.
@@ -417,6 +431,14 @@ Close STDIN stream to the child process immediately.
 
 Simpler version of L</start>. Can either start an application or run a perl
 function.
+
+=head2 run_p
+
+  $p = $self->run_p($program, @program_args);
+  $p = $self->run_p(\&Some::Perl::function, @function_args);
+
+Promise based version of L</run>. The L<Mojo::Promise> will be resolved on
+L</close> and rejected on L</error>.
 
 =head2 start
 
