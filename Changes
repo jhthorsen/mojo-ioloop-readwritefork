@@ -1,6 +1,6 @@
 Revision history for perl distribution Mojo-IOLoop-ReadWriteFork
 
-0.38 Not Released
+0.38 2021-02-17T10:15:57+0900
  - Require Mojolicious 8.0
  - Add run_p()
  - Add fix for premature close in special pty cases #12

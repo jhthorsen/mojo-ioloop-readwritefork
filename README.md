@@ -4,7 +4,7 @@ Mojo::IOLoop::ReadWriteFork - Fork a process and read/write from it
 
 # VERSION
 
-0.37
+0.38
 
 # SYNOPSIS
 
@@ -27,6 +27,9 @@ Mojo::IOLoop::ReadWriteFork - Fork a process and read/write from it
 
     # Start the application
     $fork->run("bash", -c => q(echo $YIKES foo bar baz));
+
+    # Using promises
+    $fork->on(read => sub { ... })->run_p("bash", -c => q(echo $YIKES foo bar baz))->wait;
 
 See also
 [https://github.com/jhthorsen/mojo-ioloop-readwritefork/tree/master/example/tail.pl](https://github.com/jhthorsen/mojo-ioloop-readwritefork/tree/master/example/tail.pl)
@@ -137,6 +140,14 @@ Close STDIN stream to the child process immediately.
 
 Simpler version of ["start"](#start). Can either start an application or run a perl
 function.
+
+## run\_p
+
+    $p = $self->run_p($program, @program_args);
+    $p = $self->run_p(\&Some::Perl::function, @function_args);
+
+Promise based version of ["run"](#run). The [Mojo::Promise](https://metacpan.org/pod/Mojo%3A%3APromise) will be resolved on
+["close"](#close) and rejected on ["error"](#error).
 
 ## start
 
