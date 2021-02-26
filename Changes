@@ -1,6 +1,6 @@
 Revision history for perl distribution Mojo-IOLoop-ReadWriteFork
 
-0.39 Not Released
+0.39 2021-02-26T14:17:23+0900
  - Add "before_fork" hook
 
 0.38 2021-02-17T10:15:57+0900
