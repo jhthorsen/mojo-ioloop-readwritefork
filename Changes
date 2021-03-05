@@ -1,5 +1,8 @@
 Revision history for perl distribution Mojo-IOLoop-ReadWriteFork
 
+0.40 Not Released
+ - Fix infinite loop, when die() is called inside "close" event
+
 0.39 2021-02-26T14:17:23+0900
  - Add "before_fork" hook
 
