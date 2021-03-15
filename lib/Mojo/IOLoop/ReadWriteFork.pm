@@ -296,7 +296,16 @@ sub _write {
   }
 }
 
-sub DESTROY { shift->_cleanup }
+if ($ENV{MOJO_TRACK_GLOBAL_DESTRUCT}) {
+  *DESTROY = sub {
+    warn "\n\n  !!! [$$:$0] $_[0]->DESTROY() was not called: Mojo::IOLoop::ReadWriteFork is leaking objects!\n\n"
+      if ${^GLOBAL_PHASE} eq 'DESTRUCT';
+    shift->_cleanup;
+  };
+}
+else {
+  *DESTROY = sub { shift->_cleanup };
+}
 
 1;
 
