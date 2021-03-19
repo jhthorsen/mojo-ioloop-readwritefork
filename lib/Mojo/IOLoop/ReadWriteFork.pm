@@ -4,16 +4,17 @@ use Mojo::Base 'Mojo::EventEmitter';
 use Errno qw(EAGAIN ECONNRESET EINTR EPIPE EWOULDBLOCK EIO);
 use IO::Pty;
 use Mojo::IOLoop;
+use Mojo::IOLoop::ReadWriteFork::SIGCHLD;
 use Mojo::Promise;
 use Mojo::Util;
-use POSIX ':sys_wait_h';
 use Scalar::Util ();
 
-use constant CHUNK_SIZE        => $ENV{MOJO_CHUNK_SIZE}           || 131072;
-use constant DEBUG             => $ENV{MOJO_READWRITE_FORK_DEBUG} || $ENV{MOJO_READWRITEFORK_DEBUG} || 0;
-use constant WAIT_PID_INTERVAL => $ENV{WAIT_PID_INTERVAL}         || 0.01;
+use constant CHUNK_SIZE => $ENV{MOJO_CHUNK_SIZE} || 131072;
+use constant DEBUG => $ENV{MOJO_READWRITE_FORK_DEBUG} || $ENV{MOJO_READWRITEFORK_DEBUG} || 0;
 
 my %ESC = ("\0" => '\0', "\a" => '\a', "\b" => '\b', "\f" => '\f', "\n" => '\n', "\r" => '\r', "\t" => '\t');
+
+my $SIGCHLD = Mojo::IOLoop::ReadWriteFork::SIGCHLD->singleton;
 
 sub ESC {
   local $_ = shift;
@@ -133,7 +134,7 @@ sub _start {
 
     @$self{qw(wait_eof wait_sigchld)} = (1, 1);
     $self->ioloop->reactor->watch($stdout_read, 1, 0);
-    $self->_watch_pid($pid);
+    $SIGCHLD->waitpid($pid => sub { $self && $self->_sigchld(@_) });
     $self->_write;
     $self->emit('fork');
   }
@@ -235,44 +236,11 @@ sub _read {
 }
 
 sub _sigchld {
-  my $self = shift;
-  my ($exit_value, $signal) = ($_[1] >> 8, $_[1] & 127);
+  my ($self, $status, $pid) = @_;
+  my ($exit_value, $signal) = ($status >> 8, $status & 127);
   warn "[$_[0]] Child is dead ($?/$!) $exit_value/$signal\n" if DEBUG;
   @$self{qw(exit_value signal)} = ($exit_value, $signal);
   $self->_maybe_terminate('wait_sigchld');
-}
-
-sub _watch_pid {
-  my ($self, $pid) = @_;
-  my $reactor = $self->ioloop->reactor;
-
-  # The CHLD test is for code, such as Minion::Command::minion::worker
-  # where SIGCHLD is set up for manual waitpid() checks.
-  # See https://github.com/kraih/minion/issues/15 and
-  # https://github.com/jhthorsen/mojo-ioloop-readwritefork/issues/9
-  # for details.
-  if ($SIG{CHLD} or !$reactor->isa('Mojo::Reactor::EV')) {
-    $reactor->{fork_watcher} ||= $reactor->recurring(WAIT_PID_INTERVAL, \&_watch_forks);
-    Scalar::Util::weaken($reactor->{forks}{$pid} = $self);
-  }
-  else {
-    Scalar::Util::weaken($self);
-    $self->{ev_child} = EV::child($pid, 0, sub { _sigchld($self, $pid, $_[0]->rstatus); });
-  }
-}
-
-sub _watch_forks {
-  my $reactor = shift;
-  my @pids    = keys %{$reactor->{forks}};
-
-  $reactor->remove(delete $reactor->{fork_watcher}) unless @pids;
-
-  for my $pid (@pids) {
-    local ($?, $!);
-    my $kid = waitpid $pid, WNOHANG or next;
-    warn "waitpid $pid, WNOHANG failed: $! ($kid, $?)" unless $kid == $pid;
-    _sigchld(delete $reactor->{forks}{$pid}, $pid, $?);
-  }
 }
 
 sub _write {
