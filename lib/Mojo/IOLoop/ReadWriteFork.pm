@@ -31,6 +31,12 @@ sub close {
   $self;
 }
 
+sub run {
+  my $args = ref $_[-1] eq 'HASH' ? pop : {};
+  my ($self, $program, @program_args) = @_;
+  return $self->start({%$args, program => $program, program_args => \@program_args});
+}
+
 sub run_p {
   my $self = shift;
   my $p    = Mojo::Promise->new;
@@ -39,12 +45,6 @@ sub run_p {
   push @cb, $self->once(error => sub { shift->unsubscribe(close => $cb[0]); $p->reject(@_) });
   $self->run(@_);
   return $p;
-}
-
-sub run {
-  my $args = ref $_[-1] eq 'HASH' ? pop : {};
-  my ($self, $program, @program_args) = @_;
-  return $self->start({%$args, program => $program, program_args => \@program_args});
 }
 
 sub start {
@@ -57,20 +57,15 @@ sub start {
   $args->{env}     ||= {%ENV};
   $self->{errno} = 0;
   $args->{program} or die 'program is required input';
-  $args->{program_args} ||= [];
-  ref $args->{program_args} eq 'ARRAY' or die 'program_args need to be an array';
-  Scalar::Util::weaken($self);
-  $self->{delay} = $self->ioloop->timer(0 => sub { $self->_start($args) });
+  $self->ioloop->next_tick(sub { $self->_start($args) });
   return $self;
 }
 
 sub _start {
-  local ($?, $!);
-  my ($self,        $args) = @_;
-  my ($stdout_read, $stdout_write);
-  my ($stdin_read,  $stdin_write);
-  my ($errno,       $pid);
+  my ($self, $args) = @_;
+  my ($stdin_read, $stdin_write, $stdout_read, $stdout_write);
 
+  local $!;
   if ($args->{conduit} eq 'pipe') {
     pipe $stdout_read, $stdout_write or return $self->emit(error => "pipe: $!");
     pipe $stdin_read,  $stdin_write  or return $self->emit(error => "pipe: $!");
@@ -81,7 +76,7 @@ sub _start {
     $stdin_write = $stdout_read = IO::Pty->new;
   }
   else {
-    warn "Invalid conduit ($args->{conduit})\n" if DEBUG;
+    warn "[RWF] Invalid conduit ($args->{conduit})\n" if DEBUG;
     return $self->emit(error => "Invalid conduit ($args->{conduit})");
   }
 
@@ -94,70 +89,64 @@ sub _start {
     }
   );
 
-  $pid = fork;
+  return $self->emit(error => "Couldn't fork ($!)") unless defined($self->{pid} = fork);
+  return $self->{pid}
+    ? $self->_start_parent($args, $stdin_read, $stdin_write, $stdout_read, $stdout_write)
+    : $self->_start_child($args, $stdin_read, $stdin_write, $stdout_read, $stdout_write);
+}
 
-  if (!defined $pid) {
-    warn "Could not fork $!\n" if DEBUG;
-    $self->emit(error => "Couldn't fork ($!)");
+sub _start_child {
+  my ($self, $args, $stdin_read, $stdin_write, $stdout_read, $stdout_write) = @_;
+
+  if ($args->{conduit} eq 'pty') {
+    $stdin_write->make_slave_controlling_terminal;
+    $stdin_read = $stdout_write = $stdin_write->slave;
+    $stdin_read->set_raw                                         if $args->{raw};
+    $stdin_read->clone_winsize_from($args->{clone_winsize_from}) if $args->{clone_winsize_from};
   }
-  elsif ($pid) {    # parent ===================================================
-    $self->{pid}         = $pid;
-    $self->{stdout_read} = $stdout_read;
-    $self->{stdin_write} = $stdin_write;
-    $self->_d("Forked ($args->{program} @{$args->{program_args}})") if DEBUG;
-    $stdout_read->close_slave if defined $stdout_read and UNIVERSAL::isa($stdout_read, 'IO::Pty');
 
-    Scalar::Util::weaken($self);
-    $self->ioloop->reactor->io(
-      $stdout_read => sub {
-        local ($?, $!);
-        $self->_read;
-        return unless $self->{errno};
-        $self->_d("Child $self->{errno}") if DEBUG;
-        $self->emit(error => "Read error: $self->{errno}");
-      }
-    );
+  CORE::close($stdin_write);
+  CORE::close($stdout_read);
+  open STDIN,  '<&' . fileno $stdin_read   or exit $!;
+  open STDOUT, '>&' . fileno $stdout_write or exit $!;
+  open STDERR, '>&' . fileno $stdout_write or exit $!;
+  select STDERR;
+  $| = 1;
+  select STDOUT;
+  $| = 1;
 
-    @$self{qw(wait_eof wait_sigchld)} = (1, 1);
-    $self->ioloop->reactor->watch($stdout_read, 1, 0);
-    $SIGCHLD->waitpid($pid => sub { $self && $self->_sigchld(@_) });
-    $self->_write;
-    $self->emit('fork');
+  %ENV = %{$args->{env}};
+
+  my $errno;
+  if (ref $args->{program} eq 'CODE') {
+    $! = 0;
+    @SIG{@SAFE_SIG} = ('DEFAULT') x @SAFE_SIG;
+    eval { $args->{program}->(@{$args->{program_args} || []}); };
+    $errno = $@ ? 255 : $!;
+    print STDERR $@ if length $@;
   }
-  else {    # child ===========================================================
-    if ($args->{conduit} eq 'pty') {
-      $stdin_write->make_slave_controlling_terminal;
-      $stdin_read = $stdout_write = $stdin_write->slave;
-      $stdin_read->set_raw                                         if $args->{raw};
-      $stdin_read->clone_winsize_from($args->{clone_winsize_from}) if $args->{clone_winsize_from};
-    }
-
-    CORE::close($stdin_write);
-    CORE::close($stdout_read);
-    open STDIN,  '<&' . fileno $stdin_read   or exit $!;
-    open STDOUT, '>&' . fileno $stdout_write or exit $!;
-    open STDERR, '>&' . fileno $stdout_write or exit $!;
-    select STDERR;
-    $| = 1;
-    select STDOUT;
-    $| = 1;
-
-    %ENV = %{$args->{env}};
-
-    if (ref $args->{program} eq 'CODE') {
-      $! = 0;
-      @SIG{@SAFE_SIG} = ('DEFAULT') x @SAFE_SIG;
-      eval { $args->{program}->(@{$args->{program_args}}); };
-      $errno = $@ ? 255 : $!;
-      print STDERR $@ if length $@;
-    }
-    else {
-      exec $args->{program}, @{$args->{program_args}};
-    }
-
-    eval { POSIX::_exit($errno // $!); };
-    exit($errno // $!);
+  else {
+    exec $args->{program}, @{$args->{program_args} || []};
   }
+
+  eval { POSIX::_exit($errno // $!); };
+  exit($errno // $!);
+}
+
+sub _start_parent {
+  my ($self, $args, $stdin_read, $stdin_write, $stdout_read, $stdout_write) = @_;
+
+  $self->_d("Forked $args->{program} @{$args->{program_args} || []}") if DEBUG;
+  @$self{qw(stdin_write stdout_read)} = ($stdin_write, $stdout_read);
+  @$self{qw(wait_eof wait_sigchld)}   = (1, 1);
+  $stdout_read->close_slave if defined $stdout_read and UNIVERSAL::isa($stdout_read, 'IO::Pty');
+
+  Scalar::Util::weaken($self);
+  $self->ioloop->reactor->io($stdout_read => sub { $self && $self->_read });
+  $self->ioloop->reactor->watch($stdout_read, 1, 0);
+  $SIGCHLD->waitpid($self->{pid} => sub { $self && $self->_sigchld(@_) });
+  $self->_write;
+  $self->emit('fork');
 }
 
 sub write {
@@ -172,10 +161,9 @@ sub write {
 sub kill {
   my $self   = shift;
   my $signal = shift // 15;
-  my $pid    = $self->{pid} or return;
-
-  $self->_d("Kill $signal") if DEBUG;
-  kill $signal, $pid;
+  return undef unless my $pid = $self->{pid};
+  $self->_d("kill $signal $pid") if DEBUG;
+  return kill $signal, $pid;
 }
 
 sub _error {
@@ -191,7 +179,6 @@ sub _cleanup {
   delete $self->{stdin_write};
   $reactor->remove(delete $self->{stdin_write}) if $self->{stdin_write};
   $reactor->remove(delete $self->{stdout_read}) if $self->{stdout_read};
-  $reactor->remove(delete $self->{delay})       if $self->{delay};
 }
 
 sub _d { warn "-- [$_[0]->{pid}] $_[1]\n" }
@@ -211,21 +198,28 @@ sub _maybe_terminate {
 }
 
 sub _read {
-  my $self        = shift;
-  my $stdout_read = $self->{stdout_read} or return;
-  my $read        = $stdout_read->sysread(my $buffer, CHUNK_SIZE, 0);
+  my $self = shift;
 
-  # EOF on PTY raises EIO when slave devices has closed all file descriptors
-  return $self->_maybe_terminate('wait_eof') if (!defined $read and $! == EIO) or $read == 0;
-  return $self->{errno} = $! // 0 unless defined $read;
-  $self->_d(sprintf ">>> RWF\n%s", term_escape $buffer) if DEBUG;
-  $self->emit(read => $buffer);
+  local $!;
+  my $read = $self->{stdout_read} && $self->{stdout_read}->sysread(my $buffer, CHUNK_SIZE, 0);
+  if ($read) {
+    $self->_d(sprintf ">>> RWF\n%s", term_escape $buffer) if DEBUG;
+    $self->emit(read => $buffer);
+  }
+  elsif ((!defined $read and $! == EIO) or $read == 0) {
+    $self->_maybe_terminate('wait_eof');    # EOF on PTY raises EIO when slave devices has closed all file descriptors
+  }
+  elsif ($!) {
+    $self->{errno} = $!;
+    $self->_d("Fork errno=$!") if DEBUG;
+    $self->emit(error => "Read error: $!");
+  }
 }
 
 sub _sigchld {
   my ($self, $status, $pid) = @_;
   my ($exit_value, $signal) = ($status >> 8, $status & 127);
-  $self->_d("Exit ($?/$!) $exit_value/$signal") if DEBUG;
+  $self->_d("Exit exit_value=$exit_value, signal=$signal") if DEBUG;
   @$self{qw(exit_value signal)} = ($exit_value, $signal);
   $self->_maybe_terminate('wait_sigchld');
 }
