@@ -7,7 +7,7 @@ use Mojo::IOLoop;
 use Mojo::IOLoop::ReadWriteFork::SIGCHLD;
 use Mojo::Promise;
 use Mojo::Util qw(term_escape);
-use Scalar::Util ();
+use Scalar::Util qw(blessed weaken);
 
 use constant CHUNK_SIZE => $ENV{MOJO_CHUNK_SIZE} || 131072;
 use constant DEBUG      => $ENV{MOJO_READWRITEFORK_DEBUG} && 1;
@@ -98,7 +98,7 @@ sub _start {
 sub _start_child {
   my ($self, $args, $stdin_read, $stdin_write, $stdout_read, $stdout_write) = @_;
 
-  if ($args->{conduit} eq 'pty') {
+  if (blessed $stdin_write and $stdin_write->isa('IO::Pty')) {
     $stdin_write->make_slave_controlling_terminal;
     $stdin_read = $stdout_write = $stdin_write->slave;
     $stdin_read->set_raw                                         if $args->{raw};
@@ -139,9 +139,9 @@ sub _start_parent {
   $self->_d("Forked $args->{program} @{$args->{program_args} || []}") if DEBUG;
   @$self{qw(stdin_write stdout_read)} = ($stdin_write, $stdout_read);
   @$self{qw(wait_eof wait_sigchld)}   = (1, 1);
-  $stdout_read->close_slave if defined $stdout_read and UNIVERSAL::isa($stdout_read, 'IO::Pty');
+  $stdout_read->close_slave if blessed $stdout_read and $stdout_read->isa('IO::Pty');
 
-  Scalar::Util::weaken($self);
+  weaken $self;
   $self->ioloop->reactor->io($stdout_read => sub { $self && $self->_read });
   $self->ioloop->reactor->watch($stdout_read, 1, 0);
   $SIGCHLD->waitpid($self->{pid} => sub { $self && $self->_sigchld(@_) });
