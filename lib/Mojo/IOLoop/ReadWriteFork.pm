@@ -6,32 +6,18 @@ use IO::Pty;
 use Mojo::IOLoop;
 use Mojo::IOLoop::ReadWriteFork::SIGCHLD;
 use Mojo::Promise;
-use Mojo::Util;
+use Mojo::Util qw(term_escape);
 use Scalar::Util ();
 
 use constant CHUNK_SIZE => $ENV{MOJO_CHUNK_SIZE} || 131072;
-use constant DEBUG => $ENV{MOJO_READWRITE_FORK_DEBUG} || $ENV{MOJO_READWRITEFORK_DEBUG} || 0;
-
-my %ESC = ("\0" => '\0', "\a" => '\a', "\b" => '\b', "\f" => '\f', "\n" => '\n', "\r" => '\r', "\t" => '\t');
-
-my $SIGCHLD = Mojo::IOLoop::ReadWriteFork::SIGCHLD->singleton;
-
-sub ESC {
-  local $_ = shift;
-  s/([\x00-\x1f\x7f\x80-\x9f])/$ESC{$1} || sprintf "\\x%02x", ord $1/ge;
-  $_;
-}
+use constant DEBUG      => $ENV{MOJO_READWRITEFORK_DEBUG} && 1;
 
 our $VERSION = '0.41';
 
-our @SAFE_SIG = grep {
-  not /^(
-     NUM\d+
-    |__[A-Z0-9]+__
-    |ALL|CATCHALL|DEFER|HOLD|IGNORE|MAX|PAUSE|RTMAX|RTMIN|SEGV|SETS
-    |
-  )$/x
-} keys %SIG;
+our @SAFE_SIG
+  = grep { !m!^(NUM\d+|__[A-Z0-9]+__|ALL|CATCHALL|DEFER|HOLD|IGNORE|MAX|PAUSE|RTMAX|RTMIN|SEGV|SETS)$! } keys %SIG;
+
+my $SIGCHLD = Mojo::IOLoop::ReadWriteFork::SIGCHLD->singleton;
 
 has conduit => sub { +{type => 'pipe'} };
 sub pid { shift->{pid} || 0; }
@@ -115,10 +101,10 @@ sub _start {
     $self->emit(error => "Couldn't fork ($!)");
   }
   elsif ($pid) {    # parent ===================================================
-    warn "[$pid] Child starting ($args->{program} @{$args->{program_args}})\n" if DEBUG;
     $self->{pid}         = $pid;
     $self->{stdout_read} = $stdout_read;
     $self->{stdin_write} = $stdin_write;
+    $self->_d("Forked ($args->{program} @{$args->{program_args}})") if DEBUG;
     $stdout_read->close_slave if defined $stdout_read and UNIVERSAL::isa($stdout_read, 'IO::Pty');
 
     Scalar::Util::weaken($self);
@@ -127,7 +113,7 @@ sub _start {
         local ($?, $!);
         $self->_read;
         return unless $self->{errno};
-        warn "[$pid] Child $self->{errno}\n" if DEBUG;
+        $self->_d("Child $self->{errno}") if DEBUG;
         $self->emit(error => "Read error: $self->{errno}");
       }
     );
@@ -146,7 +132,6 @@ sub _start {
       $stdin_read->clone_winsize_from($args->{clone_winsize_from}) if $args->{clone_winsize_from};
     }
 
-    warn "[$$] Starting $args->{program} @{ $args->{program_args} }\n" if DEBUG;
     CORE::close($stdin_write);
     CORE::close($stdout_read);
     open STDIN,  '<&' . fileno $stdin_read   or exit $!;
@@ -189,7 +174,7 @@ sub kill {
   my $signal = shift // 15;
   my $pid    = $self->{pid} or return;
 
-  warn "[$pid] Kill $signal\n" if DEBUG;
+  $self->_d("Kill $signal") if DEBUG;
   kill $signal, $pid;
 }
 
@@ -208,6 +193,8 @@ sub _cleanup {
   $reactor->remove(delete $self->{stdout_read}) if $self->{stdout_read};
   $reactor->remove(delete $self->{delay})       if $self->{delay};
 }
+
+sub _d { warn "-- [$_[0]->{pid}] $_[1]\n" }
 
 sub _maybe_terminate {
   my ($self, $pending_event) = @_;
@@ -231,14 +218,14 @@ sub _read {
   # EOF on PTY raises EIO when slave devices has closed all file descriptors
   return $self->_maybe_terminate('wait_eof') if (!defined $read and $! == EIO) or $read == 0;
   return $self->{errno} = $! // 0 unless defined $read;
-  warn "[$self->{pid}] >>> @{[ESC($buffer)]}\n" if DEBUG;
+  $self->_d(sprintf ">>> RWF\n%s", term_escape $buffer) if DEBUG;
   $self->emit(read => $buffer);
 }
 
 sub _sigchld {
   my ($self, $status, $pid) = @_;
   my ($exit_value, $signal) = ($status >> 8, $status & 127);
-  warn "[$_[0]] Child is dead ($?/$!) $exit_value/$signal\n" if DEBUG;
+  $self->_d("Exit ($?/$!) $exit_value/$signal") if DEBUG;
   @$self{qw(exit_value signal)} = ($exit_value, $signal);
   $self->_maybe_terminate('wait_sigchld');
 }
@@ -251,7 +238,7 @@ sub _write {
   my $written     = $stdin_write->syswrite($self->{stdin_buffer});
   return $self->_error unless defined $written;
   my $chunk = substr $self->{stdin_buffer}, 0, $written, '';
-  warn "[${ \$self->pid }] <<< @{[ESC($chunk)]}\n" if DEBUG;
+  $self->_d(sprintf "<<< RWF\n%s", term_escape $chunk) if DEBUG;
 
   if (length $self->{stdin_buffer}) {
 
