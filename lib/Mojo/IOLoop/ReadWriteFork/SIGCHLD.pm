@@ -31,20 +31,22 @@ sub waitpid {
   $self->{tid} ||= Mojo::IOLoop->recurring(
     WAIT_PID_INTERVAL,
     sub {
+      my $ioloop = shift;
+      return $ioloop->remove(delete $self->{tid}) unless %$pids;
+
       for my $pid (keys %$pids) {
         local ($?, $!);
-        $self->_exit($pid, $?) if $pid == CORE::waitpid($pid, WNOHANG);
+        my $kid = CORE::waitpid($pid, WNOHANG);
+        $self->_exit($pid, $?) if $kid == $pid or $kid == -1;
       }
-
-      $reactor->remove(delete $self->{tid}) unless %$pids;
     }
   );
 }
 
 sub _exit {
   my ($self, $pid, $status) = @_;
-  my $listeners = delete $self->{pids}{$pid};
   delete $self->{ev}{$pid};
+  my $listeners = delete $self->{pids}{$pid};
   for my $cb (@$listeners) { $cb->($status, $pid) }
 }
 
