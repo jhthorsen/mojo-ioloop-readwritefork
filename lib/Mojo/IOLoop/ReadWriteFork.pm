@@ -143,7 +143,7 @@ sub _start_parent {
   $stdout_read->close_slave if blessed $stdout_read and $stdout_read->isa('IO::Pty');
 
   my $stream = Mojo::IOLoop::Stream->new($stdout_read)->timeout(0);
-  $stream->on(error => sub { $self->emit(error => "Read error: $_[1]") });
+  $stream->on(error => sub { $! != EIO && $self->emit(error => "Read error: $_[1]") });
   $stream->on(close => sub { $self->_maybe_terminate('wait_eof') });
   $stream->on(
     read => sub {

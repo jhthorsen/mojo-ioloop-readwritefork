@@ -1,5 +1,8 @@
 Revision history for perl distribution Mojo-IOLoop-ReadWriteFork
 
+0.43 Not Released
+ - Fix not triggering "error" on EIO
+
 0.42 2021-03-24T15:26:25+0900
  - Fix $rwf to keep track of itself as long as the child process is running
  - Using Mojo::IOLoop::Stream, since $ioloop->reactor is hard
