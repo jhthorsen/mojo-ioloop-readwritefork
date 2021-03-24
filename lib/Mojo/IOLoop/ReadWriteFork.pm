@@ -4,10 +4,11 @@ use Mojo::Base 'Mojo::EventEmitter';
 use Errno qw(EAGAIN ECONNRESET EINTR EPIPE EWOULDBLOCK EIO);
 use IO::Pty;
 use Mojo::IOLoop;
+use Mojo::IOLoop::Stream;
 use Mojo::IOLoop::ReadWriteFork::SIGCHLD;
 use Mojo::Promise;
 use Mojo::Util qw(term_escape);
-use Scalar::Util qw(blessed weaken);
+use Scalar::Util qw(blessed);
 
 use constant CHUNK_SIZE => $ENV{MOJO_CHUNK_SIZE} || 131072;
 use constant DEBUG      => $ENV{MOJO_READWRITEFORK_DEBUG} && 1;
@@ -21,7 +22,7 @@ my $SIGCHLD = Mojo::IOLoop::ReadWriteFork::SIGCHLD->singleton;
 
 has conduit => sub { +{type => 'pipe'} };
 sub pid { shift->{pid} || 0; }
-has ioloop => sub { Mojo::IOLoop->singleton; };
+has ioloop => sub { Mojo::IOLoop->singleton }, weak => 1;
 
 sub close {
   my $self = shift;
@@ -141,12 +142,20 @@ sub _start_parent {
   @$self{qw(wait_eof wait_sigchld)}   = (1, 1);
   $stdout_read->close_slave if blessed $stdout_read and $stdout_read->isa('IO::Pty');
 
-  weaken $self;
-  $self->ioloop->reactor->io($stdout_read => sub { $self && $self->_read });
-  $self->ioloop->reactor->watch($stdout_read, 1, 0);
-  $SIGCHLD->waitpid($self->{pid} => sub { $self && $self->_sigchld(@_) });
-  $self->_write;
+  my $stream = Mojo::IOLoop::Stream->new($stdout_read)->timeout(0);
+  $stream->on(error => sub { $self->emit(error => "Read error: $_[1]") });
+  $stream->on(close => sub { $self->_maybe_terminate('wait_eof') });
+  $stream->on(
+    read => sub {
+      $self->_d(sprintf ">>> RWF\n%s", term_escape $_[1]) if DEBUG;
+      $self->emit(read => $_[1]);
+    }
+  );
+
+  $SIGCHLD->waitpid($self->{pid} => sub { $self->_sigchld(@_) });
+  $self->{stream_id} = $self->ioloop->stream($stream);
   $self->emit('fork');
+  $self->_write;
 }
 
 sub write {
@@ -172,15 +181,6 @@ sub _error {
   return $_[0]->emit(error => $!)->kill;
 }
 
-sub _cleanup {
-  my $self    = shift;
-  my $reactor = $self->{ioloop}{reactor} or return;
-
-  delete $self->{stdin_write};
-  $reactor->remove(delete $self->{stdin_write}) if $self->{stdin_write};
-  $reactor->remove(delete $self->{stdout_read}) if $self->{stdout_read};
-}
-
 sub _d { warn "-- [$_[0]->{pid}] $_[1]\n" }
 
 sub _maybe_terminate {
@@ -188,32 +188,15 @@ sub _maybe_terminate {
   delete $self->{$pending_event};
   return if $self->{wait_eof} or $self->{wait_sigchld};
 
+  delete $self->{stdin_write};
+  delete $self->{stdout_read};
+
   my @errors;
   for my $cb (@{$self->subscribers('close')}) {
     push @errors, $@ unless eval { $self->$cb(@$self{qw(exit_value signal)}); 1 };
   }
 
-  $self->_cleanup;
   $self->emit(error => $_) for @errors;
-}
-
-sub _read {
-  my $self = shift;
-
-  local $!;
-  my $read = $self->{stdout_read} && $self->{stdout_read}->sysread(my $buffer, CHUNK_SIZE, 0);
-  if ($read) {
-    $self->_d(sprintf ">>> RWF\n%s", term_escape $buffer) if DEBUG;
-    $self->emit(read => $buffer);
-  }
-  elsif ((!defined $read and $! == EIO) or $read == 0) {
-    $self->_maybe_terminate('wait_eof');    # EOF on PTY raises EIO when slave devices has closed all file descriptors
-  }
-  elsif ($!) {
-    $self->{errno} = $!;
-    $self->_d("Fork errno=$!") if DEBUG;
-    $self->emit(error => "Read error: $!");
-  }
 }
 
 sub _sigchld {
@@ -243,17 +226,6 @@ sub _write {
   else {
     $self->emit('drain');
   }
-}
-
-if ($ENV{MOJO_TRACK_GLOBAL_DESTRUCT}) {
-  *DESTROY = sub {
-    warn "\n\n  !!! [$$:$0] $_[0]->DESTROY() was not called: Mojo::IOLoop::ReadWriteFork is leaking objects!\n\n"
-      if ${^GLOBAL_PHASE} eq 'DESTRUCT';
-    shift->_cleanup;
-  };
-}
-else {
-  *DESTROY = sub { shift->_cleanup };
 }
 
 1;
