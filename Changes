@@ -2,6 +2,10 @@ Revision history for perl distribution Mojo-IOLoop-ReadWriteFork
 
 1.00 Not Released
  - Add pids() to Mojo::IOLoop::ReadWriteFork::SIGCHLD
+ - Documented "drain" event
+ - Replaced "before_fork" event with "prepare"
+ - Replaced "close" event with "finish"
+ - Replaced "fork" event with "spawn"
 
 0.43 2021-03-24T16:45:18+0900
  - Fix not triggering "error" on EIO

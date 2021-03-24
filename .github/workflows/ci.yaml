@@ -24,4 +24,6 @@ jobs:
       run: prove -l
       env:
         TEST_BOT: 1
+        TEST_FH: 1
+        TEST_MEMORY: 20
         TEST_POD: 1

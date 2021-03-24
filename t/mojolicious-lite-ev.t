@@ -13,23 +13,14 @@ my @pids;
 get '/' => sub {
   my $c    = shift->render_later;
   my $fork = Mojo::IOLoop::ReadWriteFork->new;
-  my $out  = '';
 
-  $c->stash(fork => $fork);
-
+  my $output = '';
+  $fork->on(read => sub { $output .= $_[1] });
   $fork->on(
-    close => sub {
+    finish => sub {
       my ($fork, $exit_value, $signal) = @_;
       push @pids, $fork->pid;
-      $c->render(json => {output => $out, exit_value => $exit_value});
-      delete $c->stash->{fork};    # <--- prevent leaks
-    }
-  );
-
-  $fork->on(
-    read => sub {
-      my ($fork, $buffer) = @_;
-      $out .= $buffer;
+      $c->render(json => {output => $output, exit_value => $exit_value});
     }
   );
 
@@ -37,11 +28,7 @@ get '/' => sub {
 };
 
 my $t = Test::Mojo->new;
-
-for (1 .. 5) {
-  $t->get_ok('/')->status_is(200)->json_has('/exit_value');
-}
-
+$t->get_ok('/')->status_is(200)->json_has('/exit_value') for 1 .. 5;
 ok !kill(0, $_), "dead child $_" for @pids;
 
 done_testing;

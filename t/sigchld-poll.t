@@ -13,15 +13,14 @@ my $exit_value = 24;
 ok !$sigchld->is_waiting, 'no forks';
 
 my $close_p = Mojo::Promise->new;
-$fork->on(close => sub { $exit_value = $_[1]; $close_p->resolve });
-$fork->start(program => sub { usleep 0.2; $! = 42; });
-
+$fork->once(finish => sub { $exit_value = $_[1]; $close_p->resolve });
 $fork->once(
-  fork => sub {
+  spawn => sub {
     is_deeply [keys %{$sigchld->pids}], [$fork->pid], 'one pid after fork';
   }
 );
 
+$fork->start(program => sub { usleep 0.2; $! = 42; });
 Mojo::Promise->race(Mojo::Promise->timeout(1), Mojo::Promise->all(Mojo::Promise->timer(0.5), $close_p))->wait;
 
 ok !$sigchld->is_waiting, 'no forks after waitpid';

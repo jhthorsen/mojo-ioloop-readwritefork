@@ -5,31 +5,14 @@ use Test::More;
 $ENV{PATH} ||= '';
 plan skip_all => 'bash is missing' unless grep { -x "$_/bash" } split /:/, $ENV{PATH};
 
-my $fork   = Mojo::IOLoop::ReadWriteFork->new;
-my $output = '';
-my $n      = 0;
-my $closed = 0;
+my $fork = Mojo::IOLoop::ReadWriteFork->new;
+my ($closed, $n, $output) = (0, 0, '');
 
-$fork->on(
-  error => sub {
-    my ($fork, $error) = @_;
-    diag $error;
-    $n++ > 20 and exit;
-  }
-);
-$fork->on(
-  close => sub {
-    $closed++;
-    Mojo::IOLoop->stop;
-  }
-);
-$fork->on(
-  read => sub {
-    my ($fork, $buffer, $writer) = @_;
-    $output .= $buffer;
-    $n++ > 20 and exit;
-  }
-);
+$fork->on(error  => sub { diag $_[1]; $n++ > 20 && exit });
+$fork->on(finish => sub { $closed++;  Mojo::IOLoop->stop });
+
+note 'Set $! to test that it does not trigger "error" event';
+$fork->on(read => sub { $! = 2; $output .= $_[1]; $n++ > 20 && exit });
 
 {
   local $ENV{YIKES} = 'too cool';

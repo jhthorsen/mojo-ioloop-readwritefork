@@ -11,7 +11,7 @@ my $columns = int(300 * rand);
 my $fork    = Mojo::IOLoop::ReadWriteFork->new;
 my (@pipe_names, @pipe_ref);
 $fork->on(
-  before_fork => sub {
+  prepare => sub {
     my ($fork, $pipes) = @_;
     @pipe_names = sort keys %$pipes;
     @pipe_ref   = map { ref $pipes->{$_} } sort keys %$pipes;
@@ -19,13 +19,12 @@ $fork->on(
   }
 );
 
-my $buf = '';
-$fork->on(read => sub { $buf .= pop });
-
+my $output = '';
+$fork->on(read => sub { $output .= pop });
 $fork->conduit({type => 'pty'})->run_p(ssh => $ENV{READWRITEFORK_SSH}, -t => q(tput cols))->wait;
 
 is_deeply \@pipe_names, [qw(stdin_read stdin_write stdout_read stdout_write)], 'pipe names';
 is_deeply \@pipe_ref, ['', 'IO::Pty', 'IO::Pty', ''], 'pipe types';
-like $buf, qr{$columns\r\n}s, 'changed columns';
+like $output, qr{$columns\r\n}s, 'changed columns';
 
 done_testing;

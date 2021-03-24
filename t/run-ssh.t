@@ -7,11 +7,11 @@ plan skip_all => 'READWRITEFORK_SSH=host is not set' unless $ENV{READWRITEFORK_S
 $ENV{READWRITEFORK_SSH} ||= Mojo::File->new('.readwritefork_ssh')->slurp;
 chomp $ENV{READWRITEFORK_SSH};
 
-my $fork = Mojo::IOLoop::ReadWriteFork->new;
-my $read;
-$fork->on(read => sub { $read .= $_[1]; });
+my $fork   = Mojo::IOLoop::ReadWriteFork->new;
+my $output = '';
+$fork->on(read => sub { $output .= $_[1]; });
 $fork->run_p(ssh => $ENV{READWRITEFORK_SSH}, qw( ls -l / ))->wait;
 
-like $read, qr{bin.*sbin}s, 'ls -l';
+like $output, qr{bin.*sbin}s, 'ls -l';
 
 done_testing;

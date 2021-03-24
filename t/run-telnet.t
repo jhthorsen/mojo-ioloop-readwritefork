@@ -8,8 +8,7 @@ plan skip_all => 'telnet is missing' unless grep { -x "$_/telnet" } split /:/, $
 
 my $address = '127.0.0.1';
 my $port    = Mojo::IOLoop::Server->generate_port;
-my ($exit_value, $signal);
-my $connected = 0;
+my ($connected, $exit_value, $signal) = (0);
 
 # echo server
 Mojo::IOLoop->server(
@@ -19,30 +18,21 @@ Mojo::IOLoop->server(
     $stream->on(
       read => sub {
         my ($stream, $chunk) = @_;
-        diag 'WRITE: ' . Mojo::IOLoop::ReadWriteFork::ESC($chunk) if $ENV{HARNESS_IS_VERBOSE};
         $stream->write("I heard you say: $chunk");
       }
     );
   }
 );
 
-my $fork   = Mojo::IOLoop::ReadWriteFork->new;
-my $output = '';
-my $drain  = 0;
+my $fork = Mojo::IOLoop::ReadWriteFork->new;
+my ($drain, $output) = (0, '');
 
-$fork->on(
-  close => sub {
-    (my $self, $exit_value, $signal) = @_;
-    Mojo::IOLoop->stop;
-  }
-);
-
+$fork->on(finish => sub { ($exit_value, $signal) = @_[1, 2]; Mojo::IOLoop->stop });
 $fork->on(
   read => sub {
     my ($fork, $chunk) = @_;
-    diag 'READ:  ' . Mojo::IOLoop::ReadWriteFork::ESC($chunk) if $ENV{HARNESS_IS_VERBOSE};
     $fork->write("hey\r\n", sub { $drain++; }) if $chunk =~ /Connected/;
-    $fork->kill(15) if $chunk =~ /I heard you say/;
+    $fork->kill(15)                            if $chunk =~ /I heard you say/;
     $output .= $chunk;
   }
 );

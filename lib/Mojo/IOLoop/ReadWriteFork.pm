@@ -42,8 +42,8 @@ sub run_p {
   my $self = shift;
   my $p    = Mojo::Promise->new;
   my @cb;
-  push @cb, $self->once(close => sub { shift->unsubscribe(error => $cb[1]); $p->resolve(@_) });
-  push @cb, $self->once(error => sub { shift->unsubscribe(close => $cb[0]); $p->reject(@_) });
+  push @cb, $self->once(error  => sub { shift->unsubscribe(finish => $cb[0]); $p->reject(@_) });
+  push @cb, $self->once(finish => sub { shift->unsubscribe(error  => $cb[1]); $p->resolve(@_) });
   $self->run(@_);
   return $p;
 }
@@ -81,14 +81,15 @@ sub _start {
     return $self->emit(error => "Invalid conduit ($args->{conduit})");
   }
 
-  $self->emit(
-    before_fork => {
-      stdin_read   => $stdin_read,
-      stdin_write  => $stdin_write,
-      stdout_read  => $stdout_read,
-      stdout_write => $stdout_write,
-    }
-  );
+  my $prepare_event = {
+    stdin_read   => $stdin_read,
+    stdin_write  => $stdin_write,
+    stdout_read  => $stdout_read,
+    stdout_write => $stdout_write,
+  };
+
+  $self->emit(before_fork => $prepare_event);    # LEGACY
+  $self->emit(prepare     => $prepare_event);
 
   return $self->emit(error => "Couldn't fork ($!)") unless defined($self->{pid} = fork);
   return $self->{pid}
@@ -154,7 +155,8 @@ sub _start_parent {
 
   $SIGCHLD->waitpid($self->{pid} => sub { $self->_sigchld(@_) });
   $self->{stream_id} = $self->ioloop->stream($stream);
-  $self->emit('fork');
+  $self->emit('fork');    # LEGACY
+  $self->emit('spawn');
   $self->_write;
 }
 
@@ -192,7 +194,7 @@ sub _maybe_terminate {
   delete $self->{stdout_read};
 
   my @errors;
-  for my $cb (@{$self->subscribers('close')}) {
+  for my $cb (@{$self->subscribers('close')}, @{$self->subscribers('finish')}) {
     push @errors, $@ unless eval { $self->$cb(@$self{qw(exit_value signal)}); 1 };
   }
 
@@ -248,7 +250,7 @@ Mojo::IOLoop::ReadWriteFork - Fork a process and read/write from it
   $fork->on(error => sub { my ($fork, $error) = @_; warn $error; });
 
   # Emitted when the child completes
-  $fork->on(close => sub { my ($fork, $exit_value, $signal) = @_; Mojo::IOLoop->stop; });
+  $fork->on(finish => sub { my ($fork, $exit_value, $signal) = @_; Mojo::IOLoop->stop; });
 
   # Emitted when the child prints to STDOUT or STDERR
   $fork->on(read => sub {
@@ -282,9 +284,59 @@ more than welcome.
 
 =head1 EVENTS
 
-=head2 before_fork
+=head2 error
 
-  $self->on(before_fork => sub { my ($self, $pipes) = @_; });
+  $self->on(error => sub { my ($self, $str) = @_; });
+
+Emitted when when the there is an issue with creating, writing or reading
+from the child process.
+
+=head2 drain
+
+  $self->on(drain => sub { my ($self) = @_; });
+
+Emitted when the buffer has been written to the sub process.
+
+=head2 finish
+
+  $self->on(finish => sub { my ($self, $exit_value, $signal) = @_; });
+
+Emitted when the child process exit.
+
+=head2 read
+
+  $self->on(read => sub { my ($self, $buf) = @_; });
+
+Emitted when the child has written a chunk of data to STDOUT or STDERR.
+
+=head2 spawn
+
+  $self->on(spawn => sub { my ($self) = @_; });
+
+Emitted after C<fork()> has been called. Note that the child process might not yet have
+been started. The order of things is impossible to say, but it's something like this:
+
+            .------.
+            | fork |
+            '------'
+               |
+           ___/ \_______________
+          |                     |
+          | (parent)            | (child)
+    .--------------.            |
+    | emit "spawn" |   .--------------------.
+    '--------------'   | set up filehandles |
+                       '--------------------'
+                                |
+                         .---------------.
+                         | exec $program |
+                         '---------------'
+
+See also L</pid> for example usage of this event.
+
+=head2 start
+
+  $self->on(start => sub { my ($self, $pipes) = @_; });
 
 Emitted right before the child process is forked. Example C<$pipes>
 
@@ -297,50 +349,6 @@ Emitted right before the child process is forked. Example C<$pipes>
     stdin_read => $pipe_fh_3,
     stdout_write => $pipe_fh_4,
   }
-
-=head2 close
-
-  $self->on(close => sub { my ($self, $exit_value, $signal) = @_; });
-
-Emitted when the child process exit.
-
-=head2 error
-
-  $self->on(error => sub { my ($self, $str) = @_; });
-
-Emitted when when the there is an issue with creating, writing or reading
-from the child process.
-
-=head2 fork
-
-  $self->on(fork => sub { my ($self) = @_; });
-
-Emitted after C<fork()> has been called. Note that the child process might not yet have
-been started. The order of things is impossible to say, but it's something like this:
-
-            .------.
-            | fork |
-            '------'
-               |
-           ___/ \_________________
-          |                       |
-          | (parent)              | (child)
-      .-------------.             |
-      | emit "fork" |    .--------------------.
-      '-------------'    | set up filehandles |
-                         '--------------------'
-                                  |
-                          .---------------.
-                          | exec $program |
-                          '---------------'
-
-See also L</pid> for example usage of this event.
-
-=head2 read
-
-  $self->on(read => sub { my ($self, $buf) = @_; });
-
-Emitted when the child has written a chunk of data to STDOUT or STDERR.
 
 =head1 ATTRIBUTES
 
@@ -397,7 +405,7 @@ function.
   $p = $self->run_p(\&Some::Perl::function, @function_args);
 
 Promise based version of L</run>. The L<Mojo::Promise> will be resolved on
-L</close> and rejected on L</error>.
+L</finish> and rejected on L</error>.
 
 =head2 start
 

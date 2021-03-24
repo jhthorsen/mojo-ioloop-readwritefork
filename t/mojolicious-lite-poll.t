@@ -4,10 +4,11 @@ use Mojo::IOLoop::ReadWriteFork;
 use Test::Mojo;
 use Test::More;
 
-plan skip_all => 'http://www.cpantesters.org/cpan/report/001a7fac-85d7-11e7-a074-e1beba07c9dd' unless $ENV{TEST_FH};
+plan skip_all => 'TEST_FH=1 # http://www.cpantesters.org/cpan/report/001a7fac-85d7-11e7-a074-e1beba07c9dd'
+  unless $ENV{TEST_FH};
 plan skip_all => 'uptime is missing' unless grep { -x "$_/uptime" } split /:/, $ENV{PATH};
 
-my $expected_pty_objects = 0;
+my ($expected_pty_objects, @pids) = (0);
 use IO::Pty;
 sub IO::Pty::DESTROY { $expected_pty_objects-- }
 
@@ -16,22 +17,14 @@ use Mojolicious::Lite;
 get '/' => sub {
   my $c    = shift->render_later;
   my $fork = Mojo::IOLoop::ReadWriteFork->new(conduit => {type => 'pty'});
-  my $out  = '';
 
-  $c->stash(fork => $fork);
-
+  my $output = '';
+  $fork->on(read => sub { $output .= $_[1] });
   $fork->on(
-    close => sub {
+    finish => sub {
       my ($fork, $exit_value, $signal) = @_;
-      $c->render(json => {output => $out, exit_value => $exit_value});
-      delete $c->stash->{fork};    # <--- prevent leaks
-    }
-  );
-
-  $fork->on(
-    read => sub {
-      my ($fork, $buffer) = @_;
-      $out .= $buffer;
+      push @pids, $fork->pid;
+      $c->render(json => {output => $output, exit_value => $exit_value});
     }
   );
 
@@ -53,6 +46,7 @@ $t->get_ok('/')->status_is(200);
 is count_fh(), $before, 'third run';
 
 is $expected_pty_objects, 0, 'all pty objects has been destroyed';
+ok !kill(0, $_), "dead child $_" for @pids;
 
 done_testing;
 
