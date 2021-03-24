@@ -1,6 +1,6 @@
 Revision history for perl distribution Mojo-IOLoop-ReadWriteFork
 
-0.43 Not Released
+0.43 2021-03-24T16:45:18+0900
  - Fix not triggering "error" on EIO
 
 0.42 2021-03-24T15:26:25+0900
