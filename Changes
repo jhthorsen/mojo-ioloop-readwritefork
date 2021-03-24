@@ -1,5 +1,8 @@
 Revision history for perl distribution Mojo-IOLoop-ReadWriteFork
 
+1.00 Not Released
+ - Add pids() to Mojo::IOLoop::ReadWriteFork::SIGCHLD
+
 0.43 2021-03-24T16:45:18+0900
  - Fix not triggering "error" on EIO
 
