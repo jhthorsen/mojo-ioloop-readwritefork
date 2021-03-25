@@ -295,45 +295,45 @@ more than welcome.
 
 =head2 asset
 
-  $self->on(asset => sub { my ($self, $asset) = @_; });
+  $fork->on(asset => sub { my ($fork, $asset) = @_; });
 
 Emitted at least once when calling L</run_and_capture_p>. C<$asset> can be
 either a L<Mojo::Asset::Memory> or L<Mojo::Asset::File> object.
 
-  $self->on(asset => sub {
-    my ($self, $asset) = @_;
+  $fork->on(asset => sub {
+    my ($fork, $asset) = @_;
     # $asset->auto_upgrade(1) is set by default
     $asset->max_memory_size(1) if $asset->can('max_memory_size');
   });
 
 =head2 error
 
-  $self->on(error => sub { my ($self, $str) = @_; });
+  $fork->on(error => sub { my ($fork, $str) = @_; });
 
 Emitted when when the there is an issue with creating, writing or reading
 from the child process.
 
 =head2 drain
 
-  $self->on(drain => sub { my ($self) = @_; });
+  $fork->on(drain => sub { my ($fork) = @_; });
 
 Emitted when the buffer has been written to the sub process.
 
 =head2 finish
 
-  $self->on(finish => sub { my ($self, $exit_value, $signal) = @_; });
+  $fork->on(finish => sub { my ($fork, $exit_value, $signal) = @_; });
 
 Emitted when the child process exit.
 
 =head2 read
 
-  $self->on(read => sub { my ($self, $buf) = @_; });
+  $fork->on(read => sub { my ($fork, $buf) = @_; });
 
 Emitted when the child has written a chunk of data to STDOUT or STDERR.
 
 =head2 spawn
 
-  $self->on(spawn => sub { my ($self) = @_; });
+  $fork->on(spawn => sub { my ($fork) = @_; });
 
 Emitted after C<fork()> has been called. Note that the child process might not yet have
 been started. The order of things is impossible to say, but it's something like this:
@@ -358,7 +358,7 @@ See also L</pid> for example usage of this event.
 
 =head2 start
 
-  $self->on(start => sub { my ($self, $pipes) = @_; });
+  $fork->on(start => sub { my ($fork, $pipes) = @_; });
 
 Emitted right before the child process is forked. Example C<$pipes>
 
@@ -376,23 +376,23 @@ Emitted right before the child process is forked. Example C<$pipes>
 
 =head2 conduit
 
-  $hash = $self->conduit;
-  $self = $self->conduit({type => "pipe"});
+  $hash = $fork->conduit;
+  $fork = $fork->conduit({type => "pipe"});
 
 Used to set the conduit and conduit options. Example:
 
-  $self->conduit({raw => 1, type => "pty"});
+  $fork->conduit({raw => 1, type => "pty"});
 
 =head2 ioloop
 
-  $ioloop = $self->ioloop;
-  $self = $self->ioloop(Mojo::IOLoop->singleton);
+  $ioloop = $fork->ioloop;
+  $fork = $fork->ioloop(Mojo::IOLoop->singleton);
 
 Holds a L<Mojo::IOLoop> object.
 
 =head2 pid
 
-  $int = $self->pid;
+  $int = $fork->pid;
 
 Holds the child process ID. Note that L</start> will start the process after
 the IO loop is started. This means that the code below will not work:
@@ -402,28 +402,28 @@ the IO loop is started. This means that the code below will not work:
 
 This will work though:
 
-  $fork->on(fork => sub { my $self = shift; warn $self->pid });
+  $fork->on(fork => sub { my $fork = shift; warn $fork->pid });
   $fork->run("bash", -c => q(echo $YIKES foo bar baz));
 
 =head1 METHODS
 
 =head2 close
 
-  $self = $self->close("stdin");
+  $fork = $fork->close("stdin");
 
 Close STDIN stream to the child process immediately.
 
 =head2 run
 
-  $self = $self->run($program, @program_args);
-  $self = $self->run(\&Some::Perl::function, @function_args);
+  $fork = $fork->run($program, @program_args);
+  $fork = $fork->run(\&Some::Perl::function, @function_args);
 
 Simpler version of L</start>. Can either start an application or run a perl
 function.
 
 =head2 run_and_capture_p
 
-  $p = $self->run_and_capture_p(...)->then(sub { my $asset = shift });
+  $p = $fork->run_and_capture_p(...)->then(sub { my $asset = shift });
 
 L</run_and_capture_p> takes the same arguments as L</run_p>, but the
 fullfillment callback will receive a L<Mojo::Asset> object that holds the
@@ -433,15 +433,15 @@ See also the L</asset> event.
 
 =head2 run_p
 
-  $p = $self->run_p($program, @program_args);
-  $p = $self->run_p(\&Some::Perl::function, @function_args);
+  $p = $fork->run_p($program, @program_args);
+  $p = $fork->run_p(\&Some::Perl::function, @function_args);
 
 Promise based version of L</run>. The L<Mojo::Promise> will be resolved on
 L</finish> and rejected on L</error>.
 
 =head2 start
 
-  $self = $self->start(\%args);
+  $fork = $fork->start(\%args);
 
 Used to fork and exec a child process. C<%args> can have:
 
@@ -489,23 +489,20 @@ This can also be specified by using the L</conduit> attribute.
 
 =head2 write
 
-  $self = $self->write($chunk);
-  $self = $self->write($chunk, $cb);
+  $fork = $fork->write($chunk);
+  $fork = $fork->write($chunk, $cb);
 
 Used to write data to the child process STDIN. An optional callback will be
 called once STDIN is drained.
 
 Example:
 
-  $self->write("some data\n", sub {
-    my ($self) = @_;
-    $self->close;
-  });
+  $fork->write("some data\n", sub { shift->close });
 
 =head2 kill
 
-  $bool = $self->kill;
-  $bool = $self->kill(15); # default
+  $bool = $fork->kill;
+  $bool = $fork->kill(15); # default
 
 Used to signal the child.
 
