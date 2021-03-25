@@ -6,6 +6,7 @@ jobs:
     strategy:
       matrix:
         perl-version:
+        - '5.16'
         - '5.20'
         - '5.26'
         - '5.30'
