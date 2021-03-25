@@ -2,6 +2,7 @@ Revision history for perl distribution Mojo-IOLoop-ReadWriteFork
 
 1.00 Not Released
  - Add pids() to Mojo::IOLoop::ReadWriteFork::SIGCHLD
+ - Add run_and_capture_p()
  - Documented "drain" event
  - Replaced "before_fork" event with "prepare"
  - Replaced "close" event with "finish"

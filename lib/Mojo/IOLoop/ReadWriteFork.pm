@@ -3,6 +3,7 @@ use Mojo::Base 'Mojo::EventEmitter';
 
 use Errno qw(EAGAIN ECONNRESET EINTR EPIPE EWOULDBLOCK EIO);
 use IO::Pty;
+use Mojo::Asset::Memory;
 use Mojo::IOLoop;
 use Mojo::IOLoop::Stream;
 use Mojo::IOLoop::ReadWriteFork::SIGCHLD;
@@ -38,12 +39,21 @@ sub run {
   return $self->start({%$args, program => $program, program_args => \@program_args});
 }
 
+sub run_and_capture_p {
+  my $self    = shift;
+  my $asset   = Mojo::Asset::Memory->new(auto_upgrade => 1);
+  my $read_cb = $self->on(read => sub { $asset->add_chunk($_[1]) });
+  $asset->once(upgrade => sub { $asset = $_[1]; $self->emit(asset => $asset) });
+  return $self->emit(asset => $asset)->run_p(@_)->then(sub {$asset})
+    ->finally(sub { $self->unsubscribe(read => $read_cb) });
+}
+
 sub run_p {
   my $self = shift;
   my $p    = Mojo::Promise->new;
   my @cb;
-  push @cb, $self->once(error  => sub { shift->unsubscribe(finish => $cb[0]); $p->reject(@_) });
-  push @cb, $self->once(finish => sub { shift->unsubscribe(error  => $cb[1]); $p->resolve(@_) });
+  push @cb, $self->once(error  => sub { shift->unsubscribe(finish => $cb[1]); $p->reject(@_) });
+  push @cb, $self->once(finish => sub { shift->unsubscribe(error  => $cb[0]); $p->resolve(@_) });
   $self->run(@_);
   return $p;
 }
@@ -162,7 +172,6 @@ sub _start_parent {
 
 sub write {
   my ($self, $chunk, $cb) = @_;
-
   $self->once(drain => $cb) if $cb;
   $self->{stdin_buffer} .= $chunk;
   $self->_write if $self->{stdin_write};
@@ -284,6 +293,19 @@ more than welcome.
 
 =head1 EVENTS
 
+=head2 asset
+
+  $self->on(asset => sub { my ($self, $asset) = @_; });
+
+Emitted at least once when calling L</run_and_capture_p>. C<$asset> can be
+either a L<Mojo::Asset::Memory> or L<Mojo::Asset::File> object.
+
+  $self->on(asset => sub {
+    my ($self, $asset) = @_;
+    # $asset->auto_upgrade(1) is set by default
+    $asset->max_memory_size(1) if $asset->can('max_memory_size');
+  });
+
 =head2 error
 
   $self->on(error => sub { my ($self, $str) = @_; });
@@ -398,6 +420,16 @@ Close STDIN stream to the child process immediately.
 
 Simpler version of L</start>. Can either start an application or run a perl
 function.
+
+=head2 run_and_capture_p
+
+  $p = $self->run_and_capture_p(...)->then(sub { my $asset = shift });
+
+L</run_and_capture_p> takes the same arguments as L</run_p>, but the
+fullfillment callback will receive a L<Mojo::Asset> object that holds the
+output from the command.
+
+See also the L</asset> event.
 
 =head2 run_p
 
