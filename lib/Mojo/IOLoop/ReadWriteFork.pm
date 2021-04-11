@@ -14,7 +14,7 @@ use Scalar::Util qw(blessed);
 use constant CHUNK_SIZE => $ENV{MOJO_CHUNK_SIZE} || 131072;
 use constant DEBUG      => $ENV{MOJO_READWRITEFORK_DEBUG} && 1;
 
-our $VERSION = '1.00';
+our $VERSION = '1.01';
 
 our @SAFE_SIG
   = grep { !m!^(NUM\d+|__[A-Z0-9]+__|ALL|CATCHALL|DEFER|HOLD|IGNORE|MAX|PAUSE|RTMAX|RTMIN|SEGV|SETS)$! } keys %SIG;
@@ -249,7 +249,7 @@ Mojo::IOLoop::ReadWriteFork - Fork a process and read/write from it
 
 =head1 VERSION
 
-1.00
+1.01
 
 =head1 SYNOPSIS
 

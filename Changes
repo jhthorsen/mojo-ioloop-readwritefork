@@ -1,6 +1,6 @@
 Revision history for perl distribution Mojo-IOLoop-ReadWriteFork
 
-1.01 Not Released
+1.01 2021-04-11T12:00:35+0900
  - Fix issue in SYNOPSIS
  - Fix Test::Memory::Cycle issues
 
