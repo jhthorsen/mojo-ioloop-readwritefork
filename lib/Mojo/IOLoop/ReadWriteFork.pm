@@ -274,7 +274,8 @@ Mojo::IOLoop::ReadWriteFork - Fork a process and read/write from it
   $fork->run("bash", -c => q(echo $YIKES foo bar baz));
 
   # Using promises
-  $fork->on(read => sub { ... })->run_p("bash", -c => q(echo $YIKES foo bar baz))->wait;
+  $fork->on(read => sub { ... });
+  $fork->run_p("bash", -c => q(echo $YIKES foo bar baz))->wait;
 
 See also
 L<https://github.com/jhthorsen/mojo-ioloop-readwritefork/tree/master/example/tail.pl>
