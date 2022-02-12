@@ -77,7 +77,7 @@ sub start {
 
 sub _start {
   my ($self, $args) = @_;
-  my (@stdin, @stdout);
+  my (@stdin, @stdout, @stderr);
 
   local $!;
   if ($args->{conduit} eq 'pipe') {
@@ -92,7 +92,13 @@ sub _start {
     return $self->emit(error => "Invalid conduit ($args->{conduit})");
   }
 
+  if ($args->{stderr}) {
+    @stderr = $self->_pipe;
+  }
+
   my $prepare_event = {
+    stderr_read  => $stderr[READ],
+    stderr_write => $stderr[WRITE],
     stdin_read   => $stdin[READ],
     stdin_write  => $stdin[WRITE],
     stdout_read  => $stdout[READ],
@@ -103,11 +109,13 @@ sub _start {
   $self->emit(prepare     => $prepare_event);
 
   return $self->emit(error => "Couldn't fork ($!)") unless defined($self->{pid} = fork);
-  return $self->{pid} ? $self->_start_parent($args, \@stdin, \@stdout) : $self->_start_child($args, \@stdin, \@stdout);
+  return $self->{pid}
+    ? $self->_start_parent($args, \@stdin, \@stdout, \@stderr)
+    : $self->_start_child($args, \@stdin, \@stdout, \@stderr);
 }
 
 sub _start_child {
-  my ($self, $args, $stdin, $stdout) = @_;
+  my ($self, $args, $stdin, $stdout, $stderr) = @_;
 
   if (blessed $stdin->[WRITE] and $stdin->[WRITE]->isa('IO::Pty')) {
     $stdin->[WRITE]->make_slave_controlling_terminal;
@@ -116,13 +124,17 @@ sub _start_child {
     $stdin->[READ]->clone_winsize_from($args->{clone_winsize_from}) if $args->{clone_winsize_from};
   }
 
+  my $stdout_no = ($args->{stdout} // 1) && fileno($stdout->[WRITE]);
+  my $stderr_no = ($args->{stderr} // 1) && fileno($stderr->[WRITE] || $stdout->[WRITE]);
+  open STDIN,  '<&' . fileno($stdin->[READ]) or exit $!;
+  open STDOUT, '>&' . $stdout_no             or exit $! if $stdout_no;
+  open STDERR, '>&' . $stderr_no             or exit $! if $stderr_no;
+  $stdout_no ? STDOUT->autoflush(1) : STDOUT->close;
+  $stderr_no ? STDERR->autoflush(1) : STDERR->close;
+
   $stdin->[WRITE]->close;
   $stdout->[READ]->close;
-  open STDIN,  '<&' . fileno $stdin->[READ]   or exit $!;
-  open STDOUT, '>&' . fileno $stdout->[WRITE] or exit $!;
-  open STDERR, '>&' . fileno $stdout->[WRITE] or exit $!;
-  STDERR->autoflush(1);
-  STDOUT->autoflush(1);
+  $stderr->[READ]->close if $stderr->[READ];
 
   %ENV = %{$args->{env}};
 
@@ -143,25 +155,17 @@ sub _start_child {
 }
 
 sub _start_parent {
-  my ($self, $args, $stdin, $stdout) = @_;
+  my ($self, $args, $stdin, $stdout, $stderr) = @_;
 
   $self->_d("Forked $args->{program} @{$args->{program_args} || []}") if DEBUG;
-  @$self{qw(stdin_write stdout_read)} = ($stdin->[WRITE], $stdout->[READ]);
-  @$self{qw(wait_eof wait_sigchld)}   = (1, 1);
-  $stdout->[READ]->close_slave if blessed $stdout->[READ] and $stdout->[READ]->isa('IO::Pty');
+  @$self{qw(stdin_write stdout_read stderr_read)} = ($stdin->[WRITE], $stdout->[READ], $stderr->[READ]);
+  @$self{qw(wait_eof wait_sigchld)}               = (1, 1);
 
-  my $stream = Mojo::IOLoop::Stream->new($stdout->[READ])->timeout(0);
-  $stream->on(error => sub { $! != EIO && $self->emit(error => "Read error: $_[1]") });
-  $stream->on(close => sub { $self->_maybe_terminate('wait_eof') });
-  $stream->on(
-    read => sub {
-      $self->_d(sprintf ">>> RWF\n%s", term_escape $_[1]) if DEBUG;
-      $self->emit(read => $_[1]);
-    }
-  );
+  $stdout->[READ]->close_slave if blessed $stdout->[READ] and $stdout->[READ]->isa('IO::Pty');
+  $self->_stream($args, stderr => $stderr->[READ]) if $stderr->[READ];
+  $self->_stream($args, stdout => $stdout->[READ]) if !$stderr->[READ] or $args->{stdout};
 
   $SIGCHLD->waitpid($self->{pid} => sub { $self->_sigchld(@_) });
-  $self->{stream_id} = $self->ioloop->stream($stream);
   $self->emit('fork');    # LEGACY
   $self->emit('spawn');
   $self->_write;
@@ -207,6 +211,19 @@ sub _maybe_terminate {
   $self->emit(error => $_) for @errors;
 }
 
+sub _on_read_cb {
+  my ($self, $args, $name) = @_;
+  my @emit = $args->{stderr} ? ($name) : qw(read);
+  return sub { $self->emit(@emit => $_[1]) }
+    unless DEBUG;
+
+  my $NAME = uc $name;
+  return sub {
+    $self->_d(sprintf ">>> RWF:$NAME\n%s", term_escape $_[1]) if DEBUG;
+    $self->emit(@emit => $_[1]);
+  };
+}
+
 sub _pipe {
   my $self = shift;
   my @rw;
@@ -221,6 +238,15 @@ sub _sigchld {
   $self->_d("Exit exit_value=$exit_value, signal=$signal") if DEBUG;
   @$self{qw(exit_value signal)} = ($exit_value, $signal);
   $self->_maybe_terminate('wait_sigchld');
+}
+
+sub _stream {
+  my ($self, $args, $name, $handle) = @_;
+  my $stream = Mojo::IOLoop::Stream->new($handle)->timeout(0);
+  $stream->on(error => sub { $! != EIO && $self->emit(error => "Read error: $_[1]") });
+  $stream->on(close => sub { $self->_maybe_terminate('wait_eof') });
+  $stream->on(read  => $self->_on_read_cb($args, $name));
+  $self->ioloop->stream($stream);
 }
 
 sub _write {
@@ -299,6 +325,20 @@ more than welcome.
 
 =head1 EVENTS
 
+=head2 stderr
+
+  $fork->on(stderr => sub { my ($fork, $buf) = @_; });
+
+Emitted when the child has written a chunk of data to STDERR and L</conduit>
+has the "stderr" key set to a true value.
+
+=head2 stdout
+
+  $fork->on(stdout => sub { my ($fork, $buf) = @_; });
+
+Emitted when the child has written a chunk of data to STDOUT and L</conduit>
+has the "stdout" key set to a true value.
+
 =head2 asset
 
   $fork->on(asset => sub { my ($fork, $asset) = @_; });
@@ -335,7 +375,8 @@ Emitted when the child process exit.
 
   $fork->on(read => sub { my ($fork, $buf) = @_; });
 
-Emitted when the child has written a chunk of data to STDOUT or STDERR.
+Emitted when the child has written a chunk of data to STDOUT or STDERR, and
+neither "stderr" nor "stdout" is set in the L</conduit>.
 
 =head2 spawn
 
@@ -369,13 +410,17 @@ See also L</pid> for example usage of this event.
 Emitted right before the child process is forked. Example C<$pipes>
 
   $pipes = {
+    # if "stderr" is set in conduit()
+    stdin_write => $stderr_fh_w,
+    stdout_read => $stderr_fh_r,
+
     # for both conduit "pipe" and "pty"
-    stdin_write => $pipe_fh_1_or_pty_object,
-    stdout_read => $pipe_fh_2_or_pty_object,
+    stdin_write => $pipe_fh_r_or_pty_object,
+    stdout_read => $pipe_fh_w_or_pty_object,
 
     # only for conduit "pipe"
-    stdin_read   => $pipe_fh_3,
-    stdout_write => $pipe_fh_4,
+    stdin_read   => $pipe_fh_r,
+    stdout_write => $pipe_fh_w,
   }
 
 =head1 ATTRIBUTES
@@ -383,11 +428,31 @@ Emitted right before the child process is forked. Example C<$pipes>
 =head2 conduit
 
   $hash = $fork->conduit;
-  $fork = $fork->conduit({type => "pipe"});
+  $fork = $fork->conduit(\%options);
 
-Used to set the conduit and conduit options. Example:
+Used to set the conduit options. Possible values are:
 
-  $fork->conduit({raw => 1, type => "pty"});
+=over 2
+
+=item * stderr
+
+This will make L<Mojo::IOLoop::ReadWriteFork> emit "stderr" events, instead of
+"read" events. Setting this to "0" will close STDERR in the child.
+
+=item * stdout
+
+This will make L<Mojo::IOLoop::ReadWriteFork> emit "stdout" events, instead of
+"read" events. Setting this to "0" will close STDOUT in the child.
+
+=item * raw
+
+Calls L<IO::Pty/set_raw> if "typ" is "pty".
+
+=item * type
+
+"type" can be either "pipe" or "pty". Default value is "pipe".
+
+=back
 
 =head2 ioloop
 
