@@ -17,7 +17,7 @@ use constant DEBUG      => $ENV{MOJO_READWRITEFORK_DEBUG} && 1;
 use constant READ       => 0;
 use constant WRITE      => 1;
 
-our $VERSION = '1.02';
+our $VERSION = '2.00';
 
 our @SAFE_SIG
   = grep { !m!^(NUM\d+|__[A-Z0-9]+__|ALL|CATCHALL|DEFER|HOLD|IGNORE|MAX|PAUSE|RTMAX|RTMIN|SEGV|SETS)$! } keys %SIG;
@@ -280,7 +280,7 @@ Mojo::IOLoop::ReadWriteFork - Fork a process and read/write from it
 
 =head1 VERSION
 
-1.02
+2.00
 
 =head1 SYNOPSIS
 
