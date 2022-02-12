@@ -19,12 +19,15 @@ $fork->on(
   }
 );
 
-my $output = '';
-$fork->on(read => sub { $output .= pop });
-$fork->conduit({type => 'pty'})->run_p(ssh => $ENV{READWRITEFORK_SSH}, -t => q(tput cols))->wait;
+my ($stdout, $stderr) = ('', '');
+$fork->on(stdout => sub { $stdout .= pop });
+$fork->on(stderr => sub { $stderr .= pop });
+$fork->conduit({stderr => 1, stdout => 1, type => 'pty'})->run_p(ssh => $ENV{READWRITEFORK_SSH}, -t => q(tput cols))
+  ->wait;
 
 is_deeply \@pipe_names, [qw(stderr_read stderr_write stdin_read stdin_write stdout_read stdout_write)], 'pipe names';
-is_deeply \@pipe_ref,   ['', '', '', 'IO::Pty', 'IO::Pty', ''],                                         'pipe types';
-like $output, qr{$columns\r\n}s, 'changed columns';
+is_deeply \@pipe_ref,   ['GLOB', 'GLOB', '', 'IO::Pty', 'IO::Pty', ''],                                 'pipe types';
+like $stdout, qr{$columns\r\n}s, 'changed columns';
+like $stderr, qr{closed},        'stderr';
 
 done_testing;
