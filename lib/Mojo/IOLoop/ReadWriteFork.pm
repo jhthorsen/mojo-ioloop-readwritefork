@@ -2,6 +2,7 @@ package Mojo::IOLoop::ReadWriteFork;
 use Mojo::Base 'Mojo::EventEmitter';
 
 use Errno qw(EAGAIN ECONNRESET EINTR EPIPE EWOULDBLOCK EIO);
+use IO::Handle;
 use IO::Pty;
 use Mojo::Asset::Memory;
 use Mojo::IOLoop;
@@ -31,7 +32,7 @@ sub close {
   my $self = shift;
   my $what = $_[0] eq 'stdout' ? 'stdout_read' : 'stdin_write';    # stdout_read is EXPERIMENTAL
   my $fh   = delete $self->{$what} or return $self;
-  CORE::close($fh) or $self->emit(error => $!);
+  $fh->close or $self->emit(error => $!);
   $self;
 }
 
@@ -80,10 +81,8 @@ sub _start {
 
   local $!;
   if ($args->{conduit} eq 'pipe') {
-    pipe $stdout[READ], $stdout[WRITE] or return $self->emit(error => "pipe: $!");
-    pipe $stdin[READ],  $stdin[WRITE]  or return $self->emit(error => "pipe: $!");
-    select +(select($stdout[WRITE]), $| = 1)[0];
-    select +(select($stdin[WRITE]),  $| = 1)[0];
+    @stdin  = $self->_pipe;
+    @stdout = $self->_pipe;
   }
   elsif ($args->{conduit} eq 'pty') {
     $stdin[WRITE] = $stdout[READ] = IO::Pty->new;
@@ -117,15 +116,13 @@ sub _start_child {
     $stdin->[READ]->clone_winsize_from($args->{clone_winsize_from}) if $args->{clone_winsize_from};
   }
 
-  CORE::close($stdin->[WRITE]);
-  CORE::close($stdout->[READ]);
+  $stdin->[WRITE]->close;
+  $stdout->[READ]->close;
   open STDIN,  '<&' . fileno $stdin->[READ]   or exit $!;
   open STDOUT, '>&' . fileno $stdout->[WRITE] or exit $!;
   open STDERR, '>&' . fileno $stdout->[WRITE] or exit $!;
-  select STDERR;
-  $| = 1;
-  select STDOUT;
-  $| = 1;
+  STDERR->autoflush(1);
+  STDOUT->autoflush(1);
 
   %ENV = %{$args->{env}};
 
@@ -208,6 +205,14 @@ sub _maybe_terminate {
   }
 
   $self->emit(error => $_) for @errors;
+}
+
+sub _pipe {
+  my $self = shift;
+  my @rw;
+  pipe $rw[READ], $rw[WRITE] or return $self->emit(error => "pipe: $!");
+  $rw[WRITE]->autoflush(1);
+  return @rw;
 }
 
 sub _sigchld {
