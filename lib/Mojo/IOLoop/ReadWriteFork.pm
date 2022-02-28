@@ -257,7 +257,7 @@ sub _write {
   my $written     = $stdin_write->syswrite($self->{stdin_buffer});
   return $self->_error unless defined $written;
   my $chunk = substr $self->{stdin_buffer}, 0, $written, '';
-  $self->_d(sprintf "<<< RWF\n%s", term_escape $chunk) if DEBUG;
+  $self->_d(sprintf "<<< RWF:STDIN\n%s", term_escape $chunk) if DEBUG;
 
   if (length $self->{stdin_buffer}) {
 

@@ -1,5 +1,8 @@
 Revision history for perl distribution Mojo-IOLoop-ReadWriteFork
 
+2.01 Not Released
+ - Add "RWF:STDIN" to DEBUG output
+
 2.00 2022-02-12T11:53:55+0900
  - Add support for "stderr" and "stdout" events
 
