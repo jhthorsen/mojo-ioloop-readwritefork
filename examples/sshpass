@@ -40,12 +40,12 @@ sub rwf_stderr { STDERR->binmode; STDERR->syswrite($_[1]) }
 sub rwf_stdout { STDOUT->binmode; STDOUT->syswrite($_[1]) }
 
 sub write_password {
-  my ($fork, $chunk) = @_;
+  my ($rwf, $chunk) = @_;
   return unless $chunk =~ m![Pp]assword:!;
 
   state $seen_password = 0;
   abort("Can't retry same password") if $seen_password++;
-  $fork->write("$password\n");
+  $rwf->write("$password\n");
 }
 
 END { ReadMode 0 }

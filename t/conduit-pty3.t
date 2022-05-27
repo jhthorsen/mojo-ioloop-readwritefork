@@ -14,32 +14,32 @@ my @ssh_options = (
   -o => 'PreferredAuthentications=keyboard-interactive,password'
 );
 
-my $fork = Mojo::IOLoop::ReadWriteFork->new->conduit({type => 'pty3'});
-my %out  = map { ($_ => '') } qw(pty stderr stdout);
+my $rwf = Mojo::IOLoop::ReadWriteFork->new->conduit({type => 'pty3'});
+my %out = map { ($_ => '') } qw(pty stderr stdout);
 
-$fork->on(
+$rwf->on(
   pty => sub {
-    my ($fork, $chunk) = @_;
+    my ($rwf, $chunk) = @_;
     $out{pty} .= $chunk;
-    $fork->write("$password\n", "pty") if $chunk =~ m![Pp]assword:!;
+    $rwf->write("$password\n") if $chunk =~ m![Pp]assword:!;
   }
 );
 
-$fork->on(
+$rwf->on(
   stderr => sub {
-    my ($fork, $chunk) = @_;
+    my ($rwf, $chunk) = @_;
     $out{stderr} .= $chunk;
   }
 );
 
-$fork->on(
+$rwf->on(
   stdout => sub {
-    my ($fork, $chunk) = @_;
+    my ($rwf, $chunk) = @_;
     $out{stdout} .= $chunk;
   }
 );
 
-$fork->run_p(ssh => @ssh_options, $ENV{READWRITEFORK_SSH}, qw(ls -l /))->wait;
+$rwf->run_p(ssh => @ssh_options, $ENV{READWRITEFORK_SSH}, qw(ls -l /))->wait;
 like $out{pty},    qr{password:\s+$}s, 'pty';
 like $out{stdout}, qr{\sroot\s}s,      'stdout';
 is $out{stderr}, '', 'stderr';

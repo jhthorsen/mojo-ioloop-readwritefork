@@ -8,7 +8,7 @@ use Mojo::IOLoop::ReadWriteFork;
 get '/tail/:name', sub {
   my $self = shift->render_later;
   my $file = '/var/log/' . $self->stash('name');
-  my $fork = Mojo::IOLoop::ReadWriteFork->new;
+  my $rwf  = Mojo::IOLoop::ReadWriteFork->new;
 
   # The request will end after 15 seconds of inactivity.
   # The line below can be used to increase that timeout,
@@ -17,7 +17,7 @@ get '/tail/:name', sub {
   # Mojo::IOLoop->stream($self->tx->connection)->timeout(60);
 
   # Make sure the object does not go out of scope
-  $self->stash(fork => $fork);
+  $self->stash(rwf => $rwf);
 
   $self->write_chunk("# tail -f $file\n");
 
@@ -26,16 +26,16 @@ get '/tail/:name', sub {
   $self->on(
     finish => sub {
       my $self = shift;
-      my $fork = $self->stash('fork') or return;
+      my $rwf  = $self->stash('rwf') or return;
       app->log->debug("Ending tail process");
-      $fork->kill;
+      $rwf->kill;
     }
   );
 
   # Write data from "tail" directly to browser
-  $fork->on(
+  $rwf->on(
     read => sub {
-      my ($fork, $buffer) = @_;
+      my ($rwf, $buffer) = @_;
       $self->write_chunk($buffer);
     }
   );
@@ -45,7 +45,7 @@ get '/tail/:name', sub {
   # display anything. It should work just fine from curl, Mojo::UserAgent,
   # ..., but from chrome, ie, ... we need a big chunk of data before it
   # gets visible.
-  $fork->start(program => 'tail', program_args => ['-f', '-n50', $file]);
+  $rwf->start(program => 'tail', program_args => ['-f', '-n50', $file]);
 };
 
 app->start;

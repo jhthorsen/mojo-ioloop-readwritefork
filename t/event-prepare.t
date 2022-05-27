@@ -8,11 +8,11 @@ $ENV{READWRITEFORK_SSH} ||= Mojo::File->new('.readwritefork_ssh')->slurp;
 chomp $ENV{READWRITEFORK_SSH};
 
 my $columns = int(300 * rand);
-my $fork    = Mojo::IOLoop::ReadWriteFork->new;
+my $rwf     = Mojo::IOLoop::ReadWriteFork->new;
 my (@pipe_names, @pipe_ref);
-$fork->on(
+$rwf->on(
   prepare => sub {
-    my ($fork, $fh) = @_;
+    my ($rwf, $fh) = @_;
     @pipe_names = sort keys %$fh;
     @pipe_ref   = map { ref $fh->{$_} } @pipe_names;
     $fh->{stdout_read}->set_winsize(40, $columns);
@@ -20,9 +20,9 @@ $fork->on(
 );
 
 my ($stdout, $stderr) = ('', '');
-$fork->on(stdout => sub { $stdout .= pop });
-$fork->on(stderr => sub { $stderr .= pop });
-$fork->conduit({stderr => 1, stdout => 1, type => 'pty'})->run_p(ssh => $ENV{READWRITEFORK_SSH}, -t => q(tput cols))
+$rwf->on(stdout => sub { $stdout .= pop });
+$rwf->on(stderr => sub { $stderr .= pop });
+$rwf->conduit({stderr => 1, stdout => 1, type => 'pty'})->run_p(ssh => $ENV{READWRITEFORK_SSH}, -t => q(tput cols))
   ->wait;
 
 is_deeply \@pipe_names, [qw(stderr_read stderr_write stdin_write stdout_read)], 'pipe names' or diag "@pipe_names";
