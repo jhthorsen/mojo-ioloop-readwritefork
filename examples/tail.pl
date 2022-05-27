@@ -7,7 +7,7 @@ use Mojo::IOLoop::ReadWriteFork;
 
 get '/tail/:name', sub {
   my $self = shift->render_later;
-  my $file = '/var/log/' .$self->stash('name');
+  my $file = '/var/log/' . $self->stash('name');
   my $fork = Mojo::IOLoop::ReadWriteFork->new;
 
   # The request will end after 15 seconds of inactivity.
@@ -23,18 +23,22 @@ get '/tail/:name', sub {
 
   # Make sure we kill "tail" after the request is finished
   # NOTE: This code might be to simple
-  $self->on(finish => sub {
-    my $self = shift;
-    my $fork = $self->stash('fork') or return;
-    app->log->debug("Ending tail process");
-    $fork->kill;
-  });
+  $self->on(
+    finish => sub {
+      my $self = shift;
+      my $fork = $self->stash('fork') or return;
+      app->log->debug("Ending tail process");
+      $fork->kill;
+    }
+  );
 
   # Write data from "tail" directly to browser
-  $fork->on(read => sub {
-    my($fork, $buffer) = @_;
-    $self->write_chunk($buffer);
-  });
+  $fork->on(
+    read => sub {
+      my ($fork, $buffer) = @_;
+      $self->write_chunk($buffer);
+    }
+  );
 
   # Start the tail program.
   # "-n50" is just to make sure we have enough data to make the browser

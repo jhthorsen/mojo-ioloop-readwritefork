@@ -142,7 +142,7 @@ Revision history for perl distribution Mojo-IOLoop-ReadWriteFork
    "^D&#8;&#8;" at the end.
 
 0.02 2013-11-20T11:36:38Z
- - Add example/tail.pl
+ - Add examples/tail.pl
  - Fix failing t/bash.t
 
 0.01 2013-11-20T10:25:19Z
