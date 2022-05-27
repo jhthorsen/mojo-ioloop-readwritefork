@@ -23,45 +23,93 @@ Mojo::IOLoop::ReadWriteFork - Fork a process and read/write from it
     });
 
     # Need to set "conduit" for bash, ssh, and other programs that require a pty
-    $fork->conduit({type => "pty"});
+    $fork->conduit({type => 'pty'});
 
     # Start the application
-    $fork->run("bash", -c => q(echo $YIKES foo bar baz));
+    $fork->run('bash', -c => q(echo $YIKES foo bar baz));
 
     # Using promises
     $fork->on(read => sub { ... });
-    $fork->run_p("bash", -c => q(echo $YIKES foo bar baz))->wait;
+    $fork->run_p('bash', -c => q(echo $YIKES foo bar baz))->wait;
 
 See also
-[https://github.com/jhthorsen/mojo-ioloop-readwritefork/tree/master/example/tail.pl](https://github.com/jhthorsen/mojo-ioloop-readwritefork/tree/master/example/tail.pl)
+[https://github.com/jhthorsen/mojo-ioloop-readwritefork/tree/master/examples/tail.pl](https://github.com/jhthorsen/mojo-ioloop-readwritefork/tree/master/examples/tail.pl)
 for an example usage from a [Mojo::Controller](https://metacpan.org/pod/Mojo%3A%3AController).
 
 # DESCRIPTION
 
-This class enable you to fork a child process and ["read"](#read) and ["write"](#write) data
-to. You can also [send signals](#kill) to the child and see when the process
-ends. The child process can be an external program (bash, telnet, ffmpeg, ...)
-or a CODE block running perl.
+[Mojo::IOLoop::ReadWriteFork](https://metacpan.org/pod/Mojo%3A%3AIOLoop%3A%3AReadWriteFork) enable you to fork a child process and ["read"](#read)
+and ["write"](#write) data to. You can also [send signals](#kill) to the child and see
+when the process ends. The child process can be an external program (bash,
+telnet, ffmpeg, ...) or a CODE block running perl.
 
-[Patches](https://github.com/jhthorsen/mojo-ioloop-readwritefork/pulls) that
-enable the ["read"](#read) event to see the difference between STDERR and STDOUT are
-more than welcome.
+## Conduits
+
+[Mojo::IOLoop::ReadWriteFork](https://metacpan.org/pod/Mojo%3A%3AIOLoop%3A%3AReadWriteFork) can write to STDIN or a [IO::Pty](https://metacpan.org/pod/IO%3A%3APty) object, and
+read from STDOUT or STDERR, depending on the "type" given to ["conduit"](#conduit).
+
+Here is an overview of the different conduits:
+
+- pipe
+
+    The "pipe" type will create a STDIN and a STDOUT conduit using a plain pipe.
+    Passing in `stderr` will also create a seperate pipe for STDERR.
+
+        $fork->conduit({type => 'pipe'});
+        $fork->conduit({type => 'pipe', stderr => 1});
+        $fork->write('some data');        # write to STDIN
+        $fork->on(read   => sub { ... }); # STDOUT and STDERR
+        $fork->on(stdout => sub { ... }); # STDOUT
+        $fork->on(stderr => sub { ... }); # STDERR
+
+    This is useful if you want to run a program like "cat" that simply read/write
+    from STDIN, STDERR or STDOUT.
+
+- pty
+
+    The "pty" type will create a STDIN and a STDOUT conduit using [IO::Pty](https://metacpan.org/pod/IO%3A%3APty).
+    Passing in "stderr" will also create a seperate pipe for STDERR.
+
+        $fork->conduit({type => 'pty'});
+        $fork->conduit({type => 'pty', stderr => 1});
+        $fork->write('some data');        # write to STDIN
+        $fork->on(read   => sub { ... }); # STDOUT and STDERR
+        $fork->on(stdout => sub { ... }); # STDOUT
+        $fork->on(stderr => sub { ... }); # STDERR
+
+    The difference between "pipe" and "pty" is that a [IO::Pty](https://metacpan.org/pod/IO%3A%3APty) object will be
+    used for STDIN and STDOUT instead of a plain pipe. In addition, it is possible
+    to pass in `clone_winsize_from` and `raw`:
+
+        $fork->conduit({type => 'pty', clone_winsize_from => \*STDOUT, raw => 1});
+
+    This is useful if you want to run "bash" or another program that requires a
+    pseudo terminal.
+
+- pty3
+
+    The "pty3" type will create a STDIN, a STDOUT, a STDERR and a PTY conduit.
+
+        $fork->conduit({type => 'pty3'});
+        $fork->write('some data', 'pty');   # write to PTY
+        $fork->write('some data', 'stdin'); # write to STDIN
+        $fork->on(pty    => sub { ... });   # PTY
+        $fork->on(stdout => sub { ... });   # STDOUT
+        $fork->on(stderr => sub { ... });   # STDERR
+
+    The difference between "pty" and "pty3" is that there will be a different
+    ["read"](#read) event for bytes coming from the pseudo TTY and it is also possible to
+    write to the PTY instead of STDIN. This type also supports "clone\_winsize\_from"
+    and "raw".
+
+        $fork->conduit({type => 'pty3', clone_winsize_from => \*STDOUT, raw => 1});
+
+    This is useful if you want to run "ssh" or another program that sends password
+    prompts (or other output) on the PTY channel. See
+    [https://github.com/jhthorsen/mojo-ioloop-readwritefork/tree/master/examples/sshpass](https://github.com/jhthorsen/mojo-ioloop-readwritefork/tree/master/examples/sshpass)
+    for an example application.
 
 # EVENTS
-
-## stderr
-
-    $fork->on(stderr => sub { my ($fork, $buf) = @_; });
-
-Emitted when the child has written a chunk of data to STDERR and ["conduit"](#conduit)
-has the "stderr" key set to a true value.
-
-## stdout
-
-    $fork->on(stdout => sub { my ($fork, $buf) = @_; });
-
-Emitted when the child has written a chunk of data to STDOUT and ["conduit"](#conduit)
-has the "stdout" key set to a true value.
 
 ## asset
 
@@ -76,6 +124,12 @@ either a [Mojo::Asset::Memory](https://metacpan.org/pod/Mojo%3A%3AAsset%3A%3AMem
       $asset->max_memory_size(1) if $asset->can('max_memory_size');
     });
 
+## drain
+
+    $fork->on(drain => sub { my ($fork) = @_; });
+
+Emitted when the buffer has been written to the sub process.
+
 ## error
 
     $fork->on(error => sub { my ($fork, $str) = @_; });
@@ -83,17 +137,37 @@ either a [Mojo::Asset::Memory](https://metacpan.org/pod/Mojo%3A%3AAsset%3A%3AMem
 Emitted when when the there is an issue with creating, writing or reading
 from the child process.
 
-## drain
-
-    $fork->on(drain => sub { my ($fork) = @_; });
-
-Emitted when the buffer has been written to the sub process.
-
 ## finish
 
     $fork->on(finish => sub { my ($fork, $exit_value, $signal) = @_; });
 
 Emitted when the child process exit.
+
+## pty
+
+    $fork->on(pty => sub { my ($fork, $buf) = @_; });
+
+Emitted when the child has written a chunk of data to a pty and ["conduit"](#conduit) has
+"type" set to "pty3".
+
+## prepare
+
+    $fork->on(prepare => sub { my ($fork, $fh) = @_; });
+
+Emitted right before the child process is forked. `$fh` can contain the
+example hash below or a subset:
+
+    $fh = {
+      pty          => $io_pty_object,
+      stderr_read  => $pipe_fh_w_or_pty_object,
+      stderr_read  => $stderr_fh_r,
+      stdin_read   => $pipe_fh_r,
+      stdin_write  => $pipe_fh_r_or_pty_object,
+      stdin_write  => $stderr_fh_w,
+      stdout_read  => $pipe_fh_w_or_pty_object,
+      stdout_read  => $stderr_fh_r,
+      stdout_write => $pipe_fh_w,
+    };
 
 ## read
 
@@ -127,25 +201,19 @@ been started. The order of things is impossible to say, but it's something like 
 
 See also ["pid"](#pid) for example usage of this event.
 
-## start
+## stderr
 
-    $fork->on(start => sub { my ($fork, $pipes) = @_; });
+    $fork->on(stderr => sub { my ($fork, $buf) = @_; });
 
-Emitted right before the child process is forked. Example `$pipes`
+Emitted when the child has written a chunk of data to STDERR and ["conduit"](#conduit)
+has the "stderr" key set to a true value or "type" is set to "pty3".
 
-    $pipes = {
-      # if "stderr" is set in conduit()
-      stdin_write => $stderr_fh_w,
-      stdout_read => $stderr_fh_r,
+## stdout
 
-      # for both conduit "pipe" and "pty"
-      stdin_write => $pipe_fh_r_or_pty_object,
-      stdout_read => $pipe_fh_w_or_pty_object,
+    $fork->on(stdout => sub { my ($fork, $buf) = @_; });
 
-      # only for conduit "pipe"
-      stdin_read   => $pipe_fh_r,
-      stdout_write => $pipe_fh_w,
-    }
+Emitted when the child has written a chunk of data to STDOUT and ["conduit"](#conduit)
+has the "stdout" key set to a true value or "type" is set to "pty3".
 
 # ATTRIBUTES
 
@@ -155,6 +223,16 @@ Emitted right before the child process is forked. Example `$pipes`
     $fork = $fork->conduit(\%options);
 
 Used to set the conduit options. Possible values are:
+
+- clone\_winsize\_from
+
+    See ["clone\_winsize\_from" in IO::Pty](https://metacpan.org/pod/IO%3A%3APty#clone_winsize_from). This only makes sense if ["conduit"](#conduit) is set
+    to "pty". This can also be specified by using the ["conduit"](#conduit) attribute.
+
+- raw
+
+    See ["set\_raw" in IO::Pty](https://metacpan.org/pod/IO%3A%3APty#set_raw). This only makes sense if ["conduit"](#conduit) is set to "pty".
+    This can also be specified by using the ["conduit"](#conduit) attribute.
 
 - stderr
 
@@ -166,13 +244,11 @@ Used to set the conduit options. Possible values are:
     This will make [Mojo::IOLoop::ReadWriteFork](https://metacpan.org/pod/Mojo%3A%3AIOLoop%3A%3AReadWriteFork) emit "stdout" events, instead of
     "read" events. Setting this to "0" will close STDOUT in the child.
 
-- raw
-
-    Calls ["set\_raw" in IO::Pty](https://metacpan.org/pod/IO%3A%3APty#set_raw) if "typ" is "pty".
-
 - type
 
-    "type" can be either "pipe" or "pty". Default value is "pipe".
+    "type" can be either "pipe", "pty" or "pty3". Default value is "pipe".
+
+    See also ["Conduits"](#conduits)
 
 ## ioloop
 
@@ -200,7 +276,7 @@ This will work though:
 
 ## close
 
-    $fork = $fork->close("stdin");
+    $fork = $fork->close('stdin');
 
 Close STDIN stream to the child process immediately.
 
@@ -258,33 +334,21 @@ Used to fork and exec a child process. `%args` can have:
     Passing in `env` will override the default set of environment variables,
     stored in `%ENV`.
 
-- conduit
-
-    Either "pipe" (default) or "pty". "pty" will use [IO::Pty](https://metacpan.org/pod/IO%3A%3APty) to simulate a
-    "pty", while "pipe" will just use ["pipe" in perlfunc](https://metacpan.org/pod/perlfunc#pipe). This can also be specified
-    by using the ["conduit"](#conduit) attribute.
-
-- clone\_winsize\_from
-
-    See ["clone\_winsize\_from" in IO::Pty](https://metacpan.org/pod/IO%3A%3APty#clone_winsize_from). This only makes sense if ["conduit"](#conduit) is set
-    to "pty". This can also be specified by using the ["conduit"](#conduit) attribute.
-
-- raw
-
-    See ["set\_raw" in IO::Pty](https://metacpan.org/pod/IO%3A%3APty#set_raw). This only makes sense if ["conduit"](#conduit) is set to "pty".
-    This can also be specified by using the ["conduit"](#conduit) attribute.
-
 ## write
 
     $fork = $fork->write($chunk);
     $fork = $fork->write($chunk, $cb);
+    $fork = $fork->write($chunk, $conduit, $cb);
 
-Used to write data to the child process STDIN. An optional callback will be
-called once STDIN is drained.
+Used to write data to the child process `$conduit`. An optional callback will
+be called once the `$chunk` is written.
 
 Example:
 
     $fork->write("some data\n", sub { shift->close });
+
+`$conduit` defaults to "stdin", but can also be "pty" if the ["pty3"](#pty3) conduit
+type is specified.
 
 ## kill
 
@@ -297,7 +361,7 @@ Used to signal the child.
 
 [Mojo::IOLoop::ForkCall](https://metacpan.org/pod/Mojo%3A%3AIOLoop%3A%3AForkCall).
 
-[https://github.com/jhthorsen/mojo-ioloop-readwritefork/tree/master/example/tail.pl](https://github.com/jhthorsen/mojo-ioloop-readwritefork/tree/master/example/tail.pl)
+[https://github.com/jhthorsen/mojo-ioloop-readwritefork/tree/master/examples/tail.pl](https://github.com/jhthorsen/mojo-ioloop-readwritefork/tree/master/examples/tail.pl)
 
 # COPYRIGHT AND LICENSE
 
