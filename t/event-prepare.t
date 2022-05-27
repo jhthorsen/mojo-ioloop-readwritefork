@@ -12,10 +12,10 @@ my $fork    = Mojo::IOLoop::ReadWriteFork->new;
 my (@pipe_names, @pipe_ref);
 $fork->on(
   prepare => sub {
-    my ($fork, $pipes) = @_;
-    @pipe_names = sort keys %$pipes;
-    @pipe_ref   = map { ref $pipes->{$_} } sort keys %$pipes;
-    $pipes->{stdout_read}->set_winsize(40, $columns);
+    my ($fork, $fh) = @_;
+    @pipe_names = sort keys %$fh;
+    @pipe_ref   = map { ref $fh->{$_} } @pipe_names;
+    $fh->{stdout_read}->set_winsize(40, $columns);
   }
 );
 
@@ -25,8 +25,8 @@ $fork->on(stderr => sub { $stderr .= pop });
 $fork->conduit({stderr => 1, stdout => 1, type => 'pty'})->run_p(ssh => $ENV{READWRITEFORK_SSH}, -t => q(tput cols))
   ->wait;
 
-is_deeply \@pipe_names, [qw(stderr_read stderr_write stdin_read stdin_write stdout_read stdout_write)], 'pipe names';
-is_deeply \@pipe_ref,   ['GLOB', 'GLOB', '', 'IO::Pty', 'IO::Pty', ''],                                 'pipe types';
+is_deeply \@pipe_names, [qw(stderr_read stderr_write stdin_write stdout_read)], 'pipe names' or diag "@pipe_names";
+is_deeply \@pipe_ref,   ['GLOB', 'GLOB', 'IO::Pty', 'IO::Pty'],                 'pipe types';
 like $stdout, qr{$columns\r\n}s, 'changed columns';
 like $stderr, qr{closed},        'stderr';
 

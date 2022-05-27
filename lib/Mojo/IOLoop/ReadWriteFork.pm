@@ -14,8 +14,6 @@ use Scalar::Util qw(blessed);
 
 use constant CHUNK_SIZE => $ENV{MOJO_CHUNK_SIZE} || 131072;
 use constant DEBUG      => $ENV{MOJO_READWRITEFORK_DEBUG} && 1;
-use constant READ       => 0;
-use constant WRITE      => 1;
 
 our $VERSION = '2.00';
 
@@ -77,64 +75,50 @@ sub start {
 
 sub _start {
   my ($self, $args) = @_;
-  my (@stdin, @stdout, @stderr);
+  my %fh;
+  @fh{qw(stderr_read stderr_write)} = $self->_pipe if $args->{stderr};
 
-  local $!;
   if ($args->{conduit} eq 'pipe') {
-    @stdin  = $self->_pipe;
-    @stdout = $self->_pipe;
+    @fh{qw(stdin_read stdin_write)}   = $self->_pipe;
+    @fh{qw(stdout_read stdout_write)} = $self->_pipe;
   }
   elsif ($args->{conduit} eq 'pty') {
-    $stdin[WRITE] = $stdout[READ] = IO::Pty->new;
+    $fh{stdin_write} = $fh{stdout_read} = IO::Pty->new;
   }
   else {
     warn "[RWF] Invalid conduit ($args->{conduit})\n" if DEBUG;
     return $self->emit(error => "Invalid conduit ($args->{conduit})");
   }
 
-  if ($args->{stderr}) {
-    @stderr = $self->_pipe;
-  }
-
-  my $prepare_event = {
-    stderr_read  => $stderr[READ],
-    stderr_write => $stderr[WRITE],
-    stdin_read   => $stdin[READ],
-    stdin_write  => $stdin[WRITE],
-    stdout_read  => $stdout[READ],
-    stdout_write => $stdout[WRITE],
-  };
-
-  $self->emit(before_fork => $prepare_event);    # LEGACY
-  $self->emit(prepare     => $prepare_event);
+  $self->emit(before_fork => \%fh);    # LEGACY
+  $self->emit(prepare     => \%fh);
 
   return $self->emit(error => "Couldn't fork ($!)") unless defined($self->{pid} = fork);
-  return $self->{pid}
-    ? $self->_start_parent($args, \@stdin, \@stdout, \@stderr)
-    : $self->_start_child($args, \@stdin, \@stdout, \@stderr);
+  return $self->{pid} ? $self->_start_parent($args, \%fh) : $self->_start_child($args, \%fh);
 }
 
 sub _start_child {
-  my ($self, $args, $stdin, $stdout, $stderr) = @_;
+  my ($self, $args, $fh) = @_;
 
-  if (blessed $stdin->[WRITE] and $stdin->[WRITE]->isa('IO::Pty')) {
-    $stdin->[WRITE]->make_slave_controlling_terminal;
-    $stdin->[READ] = $stdout->[WRITE] = $stdin->[WRITE]->slave;
-    $stdin->[READ]->set_raw                                         if $args->{raw};
-    $stdin->[READ]->clone_winsize_from($args->{clone_winsize_from}) if $args->{clone_winsize_from};
+  if (my $pty = blessed $fh->{stdin_write} && $fh->{stdin_write}->isa('IO::Pty') && $fh->{stdin_write}) {
+    $pty->make_slave_controlling_terminal;
+    $fh->{stdin_read} = $pty->slave;
+    $fh->{stdin_read}->set_raw                                         if $args->{raw};
+    $fh->{stdin_read}->clone_winsize_from($args->{clone_winsize_from}) if $args->{clone_winsize_from};
+    $fh->{stdout_write} = $fh->{stdin_read};
   }
 
-  my $stdout_no = ($args->{stdout} // 1) && fileno($stdout->[WRITE]);
-  my $stderr_no = ($args->{stderr} // 1) && fileno($stderr->[WRITE] || $stdout->[WRITE]);
-  open STDIN,  '<&' . fileno($stdin->[READ]) or exit $!;
-  open STDOUT, '>&' . $stdout_no             or exit $! if $stdout_no;
-  open STDERR, '>&' . $stderr_no             or exit $! if $stderr_no;
+  my $stdout_no = ($args->{stdout} // 1) && fileno($fh->{stdout_write});
+  my $stderr_no = ($args->{stderr} // 1) && fileno($fh->{stderr_write} || $fh->{stdout_write});
+  open STDIN,  '<&' . fileno($fh->{stdin_read}) or exit $!;
+  open STDOUT, '>&' . $stdout_no or exit $! if $stdout_no;
+  open STDERR, '>&' . $stderr_no or exit $! if $stderr_no;
   $stdout_no ? STDOUT->autoflush(1) : STDOUT->close;
   $stderr_no ? STDERR->autoflush(1) : STDERR->close;
 
-  $stdin->[WRITE]->close;
-  $stdout->[READ]->close;
-  $stderr->[READ]->close if $stderr->[READ];
+  $fh->{stdin_write}->close;
+  $fh->{stdout_read}->close;
+  $fh->{stderr_read}->close if $fh->{stderr_read};
 
   %ENV = %{$args->{env}};
 
@@ -155,15 +139,15 @@ sub _start_child {
 }
 
 sub _start_parent {
-  my ($self, $args, $stdin, $stdout, $stderr) = @_;
+  my ($self, $args, $fh) = @_;
 
   $self->_d("Forked $args->{program} @{$args->{program_args} || []}") if DEBUG;
-  @$self{qw(stdin_write stdout_read stderr_read)} = ($stdin->[WRITE], $stdout->[READ], $stderr->[READ]);
+  @$self{qw(stdin_write stdout_read stderr_read)} = @$fh{qw(stdin_write stdout_read stderr_read)};
   @$self{qw(wait_eof wait_sigchld)}               = (1, 1);
 
-  $stdout->[READ]->close_slave if blessed $stdout->[READ] and $stdout->[READ]->isa('IO::Pty');
-  $self->_stream($args, stderr => $stderr->[READ]) if $stderr->[READ];
-  $self->_stream($args, stdout => $stdout->[READ]) if !$stderr->[READ] or $args->{stdout};
+  $fh->{stdout_read}->close_slave if blessed $fh->{stdout_read} and $fh->{stdout_read}->isa('IO::Pty');
+  $self->_stream($args, stderr => $fh->{stderr_read}) if $fh->{stderr_read};
+  $self->_stream($args, stdout => $fh->{stdout_read}) if !$fh->{stderr_read} or $args->{stdout};
 
   $SIGCHLD->waitpid($self->{pid} => sub { $self->_sigchld(@_) });
   $self->emit('fork');    # LEGACY
@@ -226,10 +210,9 @@ sub _on_read_cb {
 
 sub _pipe {
   my $self = shift;
-  my @rw;
-  pipe $rw[READ], $rw[WRITE] or return $self->emit(error => "pipe: $!");
-  $rw[WRITE]->autoflush(1);
-  return @rw;
+  pipe my $read, my $write or return $self->emit(error => "pipe: $!");
+  $write->autoflush(1);
+  return $read, $write;
 }
 
 sub _sigchld {
