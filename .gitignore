@@ -10,6 +10,7 @@
 /Makefile.old
 .readwritefork_ssh
 .sudo_password
+.readwritefork_ssh_password
 *.old
 *.swp
 ~$

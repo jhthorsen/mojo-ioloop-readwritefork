@@ -1,0 +1,48 @@
+#!/usr/bin/env perl
+use Mojo::Base -strict;
+
+use IO::Handle;
+use Mojo::IOLoop::ReadWriteFork;
+use Mojo::Util qw(getopt);
+
+my $password;
+getopt('f=s' => \&read_password_from_file, 'e' => \&read_password_from_env);
+abort("Can't start without valid -e or -f <file>") unless $password;
+run_program(@ARGV);
+
+sub abort                  { warn "$_[0]\n"; exit($! || 1) }
+sub read_password_from_env { $password = $ENV{SSHPASS} }
+
+sub read_password_from_file {
+  my ($name, $file) = @_;
+  open my $FH, '<', $file or abort("Can't read $file: $!");
+  $password = readline $FH;
+  chomp $password;
+}
+
+sub run_program {
+  my @program = @_;
+  my $rwf     = Mojo::IOLoop::ReadWriteFork->new->conduit({type => 'pty3'});
+  $rwf->on(prepare => \&rwf_prepare);
+  $rwf->on(pty     => \&write_password);
+  $rwf->on(stderr  => \&rwf_stderr);
+  $rwf->on(stdout  => \&rwf_stdout);
+  $rwf->run_p(@program)->wait;
+}
+
+sub rwf_prepare {
+  my ($rwf, $fh) = @_;
+  $fh->{stdin_read} = $fh->{pty};    # Enable running "ssh -t ..."
+}
+
+sub rwf_stderr { STDERR->binmode; STDERR->syswrite($_[1]) }
+sub rwf_stdout { STDOUT->binmode; STDOUT->syswrite($_[1]) }
+
+sub write_password {
+  my ($fork, $chunk) = @_;
+  return unless $chunk =~ m![Pp]assword:!;
+
+  state $seen_password = 0;
+  abort("Can't retry same password") if $seen_password++;
+  $fork->write("$password\n", "pty");
+}
