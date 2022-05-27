@@ -62,4 +62,5 @@
 ^MANIFEST\.SKIP
 ^README\.pod
 ^.readwritefork_ssh
+^.readwritefork_ssh_password
 ^.sudo_password

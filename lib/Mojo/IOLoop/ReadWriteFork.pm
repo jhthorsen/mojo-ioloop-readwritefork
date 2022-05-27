@@ -86,9 +86,8 @@ sub _start {
   }
   elsif ($args->{conduit} eq 'pty3') {
     $args->{$_} //= 1 for qw(stdin stdout stderr);
-    @fh{qw(stdin_read stdin_write)}   = $self->_pipe;
+    @fh{stdin_write} = IO::Pty->new;
     @fh{qw(stdout_read stdout_write)} = $self->_pipe;
-    $fh{pty}                          = IO::Pty->new;
   }
   else {
     warn "[RWF] Invalid conduit ($args->{conduit})\n" if DEBUG;
@@ -107,18 +106,12 @@ sub _start {
 sub _start_child {
   my ($self, $args, $fh) = @_;
 
-  if (my $pty = $fh->{pty}) {
-    $pty->make_slave_controlling_terminal;
-    $fh->{tty} = $pty->slave;
-    $fh->{tty}->set_raw                                         if $args->{raw};
-    $fh->{tty}->clone_winsize_from($args->{clone_winsize_from}) if $args->{clone_winsize_from};
-  }
-  elsif ($pty = blessed $fh->{stdin_write} && $fh->{stdin_write}->isa('IO::Pty') && $fh->{stdin_write}) {
+  if (my $pty = blessed $fh->{stdin_write} && $fh->{stdin_write}->isa('IO::Pty') && $fh->{stdin_write}) {
     $pty->make_slave_controlling_terminal;
     $fh->{stdin_read} = $pty->slave;
     $fh->{stdin_read}->set_raw                                         if $args->{raw};
     $fh->{stdin_read}->clone_winsize_from($args->{clone_winsize_from}) if $args->{clone_winsize_from};
-    $fh->{stdout_write} = $fh->{stdin_read};
+    $fh->{stdout_write} ||= $fh->{stdin_read};
   }
 
   my $stdout_no = ($args->{stdout} // 1) && fileno($fh->{stdout_write});
@@ -155,11 +148,11 @@ sub _start_parent {
   my ($self, $args, $fh) = @_;
 
   $self->_d("Forked $args->{program} @{$args->{program_args} || []}") if DEBUG;
-  @$self{qw(pty_write stdin_write stdout_read stderr_read)} = @$fh{qw(pty stdin_write stdout_read stderr_read)};
-  @$self{qw(wait_eof wait_sigchld)}                         = (1, 1);
+  @$self{qw(stdin_write stdout_read stderr_read)} = @$fh{qw(stdin_write stdout_read stderr_read)};
+  @$self{qw(wait_eof wait_sigchld)}               = (1, 1);
 
   $fh->{stdout_read}->close_slave if blessed $fh->{stdout_read} and $fh->{stdout_read}->isa('IO::Pty');
-  $self->_stream(pty    => $fh->{pty})         if $fh->{pty};
+  $self->_stream(pty    => $fh->{stdin_write}) if $args->{conduit} eq 'pty3';
   $self->_stream(stderr => $fh->{stderr_read}) if $fh->{stderr_read};
   $self->_stream(stdout => $fh->{stdout_read}) if !$fh->{stderr_read} or $args->{stdout};
 
@@ -170,14 +163,11 @@ sub _start_parent {
 }
 
 sub write {
-  my ($self, $chunk, $conduit, $cb) = @_;
-  ($cb, $conduit) = ($conduit, 'stdin') if !$conduit or ref $conduit eq 'CODE';
-
-  my $fh_name = "${conduit}_write";
-  push @{$self->{buffer}}, [$fh_name => $chunk];
+  my ($self, $chunk, $cb) = @_;
   $self->once(drain => $cb) if $cb;
-  $self->_write             if $self->{$fh_name};
-  $self;
+  $self->{stdin_buffer} .= $chunk;
+  $self->_write if $self->{stdin_write};
+  return $self;
 }
 
 sub kill {
@@ -245,24 +235,19 @@ sub _stream {
 
 sub _write {
   my $self = shift;
-  return unless my $buffer = delete $self->{buffer};
+  return unless length $self->{stdin_buffer};
 
-  my @again;
-  for my $i (@$buffer) {
-    my $fh      = $self->{$i->[0]};
-    my $written = $fh->syswrite($i->[1]);
-    $self->_d(sprintf "<<< RWF:%s\n%s", uc($i->[0]) =~ s/_WRITE$//r, term_escape $i->[1]) if DEBUG;
-    return $self->_error unless defined $written;
+  my $stdin_write = $self->{stdin_write};
+  my $written     = $stdin_write->syswrite($self->{stdin_buffer});
+  return $self->_error unless defined $written;
 
-    substr $i->[1], 0, $written, '';
-    push @again, $i if length $i->[1];
-  }
+  my $chunk = substr $self->{stdin_buffer}, 0, $written, '';
+  $self->_d(sprintf "<<< RWF:STDIN\n%s", term_escape $chunk) if DEBUG;
 
-  if (@again) {
+  if (length $self->{stdin_buffer}) {
 
     # This is one ugly hack because it does not seem like IO::Pty play
     # nice with Mojo::Reactor(::EV) ->io(...) and ->watch(...)
-    $self->{buffer} = \@again;
     $self->ioloop->timer(0.01 => sub { $self and $self->_write });
   }
   else {
@@ -369,16 +354,14 @@ pseudo terminal.
 The "pty3" type will create a STDIN, a STDOUT, a STDERR and a PTY conduit.
 
   $fork->conduit({type => 'pty3'});
-  $fork->write('some data', 'pty');   # write to PTY
-  $fork->write('some data', 'stdin'); # write to STDIN
-  $fork->on(pty    => sub { ... });   # PTY
-  $fork->on(stdout => sub { ... });   # STDOUT
-  $fork->on(stderr => sub { ... });   # STDERR
+  $fork->write('some data');        # write to STDIN/PTY
+  $fork->on(pty    => sub { ... }); # PTY
+  $fork->on(stdout => sub { ... }); # STDOUT
+  $fork->on(stderr => sub { ... }); # STDERR
 
 The difference between "pty" and "pty3" is that there will be a different
-L</read> event for bytes coming from the pseudo TTY and it is also possible to
-write to the PTY instead of STDIN. This type also supports "clone_winsize_from"
-and "raw".
+L</read> event for bytes coming from the pseudo PTY. This type also supports
+"clone_winsize_from" and "raw".
 
   $fork->conduit({type => 'pty3', clone_winsize_from => \*STDOUT, raw => 1});
 
@@ -438,7 +421,6 @@ Emitted right before the child process is forked. C<$fh> can contain the
 example hash below or a subset:
 
   $fh = {
-    pty          => $io_pty_object,
     stderr_read  => $pipe_fh_w_or_pty_object,
     stderr_read  => $stderr_fh_r,
     stdin_read   => $pipe_fh_r,
@@ -626,17 +608,13 @@ stored in C<%ENV>.
 
   $fork = $fork->write($chunk);
   $fork = $fork->write($chunk, $cb);
-  $fork = $fork->write($chunk, $conduit, $cb);
 
-Used to write data to the child process C<$conduit>. An optional callback will
-be called once the C<$chunk> is written.
+Used to write data to the child process STDIN. An optional callback will be
+called once the C<$chunk> is written.
 
 Example:
 
   $fork->write("some data\n", sub { shift->close });
-
-C<$conduit> defaults to "stdin", but can also be "pty" if the L</pty3> conduit
-type is specified.
 
 =head2 kill
 

@@ -4,6 +4,7 @@ use Mojo::Base -strict;
 use IO::Handle;
 use Mojo::IOLoop::ReadWriteFork;
 use Mojo::Util qw(getopt);
+use Term::ReadKey qw(ReadMode);
 
 my $password;
 getopt('f=s' => \&read_password_from_file, 'e' => \&read_password_from_env);
@@ -22,17 +23,17 @@ sub read_password_from_file {
 
 sub run_program {
   my @program = @_;
-  my $rwf     = Mojo::IOLoop::ReadWriteFork->new->conduit({type => 'pty3'});
-  $rwf->on(prepare => \&rwf_prepare);
-  $rwf->on(pty     => \&write_password);
-  $rwf->on(stderr  => \&rwf_stderr);
-  $rwf->on(stdout  => \&rwf_stdout);
-  $rwf->run_p(@program)->wait;
-}
+  my $rwf     = Mojo::IOLoop::ReadWriteFork->new->conduit({clone_winsize_from => \*STDIN, type => 'pty3'});
 
-sub rwf_prepare {
-  my ($rwf, $fh) = @_;
-  $fh->{stdin_read} = $fh->{pty};    # Enable running "ssh -t ..."
+  my $stdin = Mojo::IOLoop::Stream->new(\*STDIN);
+  $rwf->ioloop->stream($stdin);
+  $stdin->on(read => sub { $rwf->write($_[1]) });
+  $rwf->once(stdout => sub { ReadMode 4 });
+
+  $rwf->on(pty    => \&write_password);
+  $rwf->on(stderr => \&rwf_stderr);
+  $rwf->on(stdout => \&rwf_stdout);
+  $rwf->run_p(@program)->catch(sub { warn @_ })->wait;
 }
 
 sub rwf_stderr { STDERR->binmode; STDERR->syswrite($_[1]) }
@@ -44,5 +45,7 @@ sub write_password {
 
   state $seen_password = 0;
   abort("Can't retry same password") if $seen_password++;
-  $fork->write("$password\n", "pty");
+  $fork->write("$password\n");
 }
+
+END { ReadMode 0 }
