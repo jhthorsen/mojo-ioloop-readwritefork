@@ -299,14 +299,14 @@ Mojo::IOLoop::ReadWriteFork - Fork a process and read/write from it
   });
 
   # Need to set "conduit" for bash, ssh, and other programs that require a pty
-  $fork->conduit({type => "pty"});
+  $fork->conduit({type => 'pty'});
 
   # Start the application
-  $fork->run("bash", -c => q(echo $YIKES foo bar baz));
+  $fork->run('bash', -c => q(echo $YIKES foo bar baz));
 
   # Using promises
   $fork->on(read => sub { ... });
-  $fork->run_p("bash", -c => q(echo $YIKES foo bar baz))->wait;
+  $fork->run_p('bash', -c => q(echo $YIKES foo bar baz))->wait;
 
 See also
 L<https://github.com/jhthorsen/mojo-ioloop-readwritefork/tree/master/examples/tail.pl>
@@ -391,27 +391,6 @@ for an example application.
 
 =head1 EVENTS
 
-=head2 pty
-
-  $fork->on(pty => sub { my ($fork, $buf) = @_; });
-
-Emitted when the child has written a chunk of data to a pty and L</conduit> has
-"type" set to "pty3".
-
-=head2 stderr
-
-  $fork->on(stderr => sub { my ($fork, $buf) = @_; });
-
-Emitted when the child has written a chunk of data to STDERR and L</conduit>
-has the "stderr" key set to a true value or "type" is set to "pty3".
-
-=head2 stdout
-
-  $fork->on(stdout => sub { my ($fork, $buf) = @_; });
-
-Emitted when the child has written a chunk of data to STDOUT and L</conduit>
-has the "stdout" key set to a true value or "type" is set to "pty3".
-
 =head2 asset
 
   $fork->on(asset => sub { my ($fork, $asset) = @_; });
@@ -425,6 +404,12 @@ either a L<Mojo::Asset::Memory> or L<Mojo::Asset::File> object.
     $asset->max_memory_size(1) if $asset->can('max_memory_size');
   });
 
+=head2 drain
+
+  $fork->on(drain => sub { my ($fork) = @_; });
+
+Emitted when the buffer has been written to the sub process.
+
 =head2 error
 
   $fork->on(error => sub { my ($fork, $str) = @_; });
@@ -432,17 +417,37 @@ either a L<Mojo::Asset::Memory> or L<Mojo::Asset::File> object.
 Emitted when when the there is an issue with creating, writing or reading
 from the child process.
 
-=head2 drain
-
-  $fork->on(drain => sub { my ($fork) = @_; });
-
-Emitted when the buffer has been written to the sub process.
-
 =head2 finish
 
   $fork->on(finish => sub { my ($fork, $exit_value, $signal) = @_; });
 
 Emitted when the child process exit.
+
+=head2 pty
+
+  $fork->on(pty => sub { my ($fork, $buf) = @_; });
+
+Emitted when the child has written a chunk of data to a pty and L</conduit> has
+"type" set to "pty3".
+
+=head2 prepare
+
+  $fork->on(prepare => sub { my ($fork, $fh) = @_; });
+
+Emitted right before the child process is forked. C<$fh> can contain the
+example hash below or a subset:
+
+  $fh = {
+    pty          => $io_pty_object,
+    stderr_read  => $pipe_fh_w_or_pty_object,
+    stderr_read  => $stderr_fh_r,
+    stdin_read   => $pipe_fh_r,
+    stdin_write  => $pipe_fh_r_or_pty_object,
+    stdin_write  => $stderr_fh_w,
+    stdout_read  => $pipe_fh_w_or_pty_object,
+    stdout_read  => $stderr_fh_r,
+    stdout_write => $pipe_fh_w,
+  };
 
 =head2 read
 
@@ -476,25 +481,19 @@ been started. The order of things is impossible to say, but it's something like 
 
 See also L</pid> for example usage of this event.
 
-=head2 start
+=head2 stderr
 
-  $fork->on(start => sub { my ($fork, $pipes) = @_; });
+  $fork->on(stderr => sub { my ($fork, $buf) = @_; });
 
-Emitted right before the child process is forked. Example C<$pipes>
+Emitted when the child has written a chunk of data to STDERR and L</conduit>
+has the "stderr" key set to a true value or "type" is set to "pty3".
 
-  $pipes = {
-    # if "stderr" is set in conduit()
-    stdin_write => $stderr_fh_w,
-    stdout_read => $stderr_fh_r,
+=head2 stdout
 
-    # for both conduit "pipe" and "pty"
-    stdin_write => $pipe_fh_r_or_pty_object,
-    stdout_read => $pipe_fh_w_or_pty_object,
+  $fork->on(stdout => sub { my ($fork, $buf) = @_; });
 
-    # only for conduit "pipe"
-    stdin_read   => $pipe_fh_r,
-    stdout_write => $pipe_fh_w,
-  }
+Emitted when the child has written a chunk of data to STDOUT and L</conduit>
+has the "stdout" key set to a true value or "type" is set to "pty3".
 
 =head1 ATTRIBUTES
 
@@ -507,6 +506,16 @@ Used to set the conduit options. Possible values are:
 
 =over 2
 
+=item * clone_winsize_from
+
+See L<IO::Pty/clone_winsize_from>. This only makes sense if L</conduit> is set
+to "pty". This can also be specified by using the L</conduit> attribute.
+
+=item * raw
+
+See L<IO::Pty/set_raw>. This only makes sense if L</conduit> is set to "pty".
+This can also be specified by using the L</conduit> attribute.
+
 =item * stderr
 
 This will make L<Mojo::IOLoop::ReadWriteFork> emit "stderr" events, instead of
@@ -516,10 +525,6 @@ This will make L<Mojo::IOLoop::ReadWriteFork> emit "stderr" events, instead of
 
 This will make L<Mojo::IOLoop::ReadWriteFork> emit "stdout" events, instead of
 "read" events. Setting this to "0" will close STDOUT in the child.
-
-=item * raw
-
-Calls L<IO::Pty/set_raw> if "typ" is "pty".
 
 =item * type
 
@@ -555,7 +560,7 @@ This will work though:
 
 =head2 close
 
-  $fork = $fork->close("stdin");
+  $fork = $fork->close('stdin');
 
 Close STDIN stream to the child process immediately.
 
@@ -614,22 +619,6 @@ something you should be avare of. See also L<perlfunc/exec> for more details.
 
 Passing in C<env> will override the default set of environment variables,
 stored in C<%ENV>.
-
-=item * conduit
-
-Either "pipe" (default) or "pty". "pty" will use L<IO::Pty> to simulate a
-"pty", while "pipe" will just use L<perlfunc/pipe>. This can also be specified
-by using the L</conduit> attribute.
-
-=item * clone_winsize_from
-
-See L<IO::Pty/clone_winsize_from>. This only makes sense if L</conduit> is set
-to "pty". This can also be specified by using the L</conduit> attribute.
-
-=item * raw
-
-See L<IO::Pty/set_raw>. This only makes sense if L</conduit> is set to "pty".
-This can also be specified by using the L</conduit> attribute.
 
 =back
 
