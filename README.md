@@ -4,23 +4,21 @@ Mojo::IOLoop::ReadWriteFork - Fork a process and read/write from it
 
 # VERSION
 
-2.00
+2.01
 
 # SYNOPSIS
 
-    my $fork = Mojo::IOLoop::ReadWriteFork->new;
+    use Mojo::Base -strict, -signatures;
+    my $rwf = Mojo::IOLoop::ReadWriteFork->new;
 
     # Emitted if something terrible happens
-    $rwf->on(error => sub { my ($fork, $error) = @_; warn $error; });
+    $rwf->on(error => sub ($rwf, $error) { warn $error });
 
     # Emitted when the child completes
-    $rwf->on(finish => sub { my ($fork, $exit_value, $signal) = @_; Mojo::IOLoop->stop; });
+    $rwf->on(finish => sub ($rwf, $exit_value, $signal) { Mojo::IOLoop->stop; });
 
     # Emitted when the child prints to STDOUT or STDERR
-    $rwf->on(read => sub {
-      my ($fork, $buf) = @_;
-      print qq(Child process sent us "$buf");
-    });
+    $rwf->on(read => sub ($rwf, $buf) { print qq(Child process sent us "$buf") });
 
     # Need to set "conduit" for bash, ssh, and other programs that require a pty
     $rwf->conduit({type => 'pty'});
@@ -29,7 +27,7 @@ Mojo::IOLoop::ReadWriteFork - Fork a process and read/write from it
     $rwf->run('bash', -c => q(echo $YIKES foo bar baz));
 
     # Using promises
-    $rwf->on(read => sub { ... });
+    $rwf->on(read => sub ($rwf, $buf) { ... });
     $rwf->run_p('bash', -c => q(echo $YIKES foo bar baz))->wait;
 
 See also
@@ -111,46 +109,45 @@ Here is an overview of the different conduits:
 
 ## asset
 
-    $rwf->on(asset => sub { my ($fork, $asset) = @_; });
+    $rwf->on(asset => sub ($rwf, $asset) { ... });
 
 Emitted at least once when calling ["run\_and\_capture\_p"](#run_and_capture_p). `$asset` can be
 either a [Mojo::Asset::Memory](https://metacpan.org/pod/Mojo%3A%3AAsset%3A%3AMemory) or [Mojo::Asset::File](https://metacpan.org/pod/Mojo%3A%3AAsset%3A%3AFile) object.
 
-    $rwf->on(asset => sub {
-      my ($fork, $asset) = @_;
+    $rwf->on(asset => sub ($rwf, $asset) {
       # $asset->auto_upgrade(1) is set by default
       $asset->max_memory_size(1) if $asset->can('max_memory_size');
     });
 
 ## drain
 
-    $rwf->on(drain => sub { my ($fork) = @_; });
+    $rwf->on(drain => sub ($rwf) { ... });
 
 Emitted when the buffer has been written to the sub process.
 
 ## error
 
-    $rwf->on(error => sub { my ($fork, $str) = @_; });
+    $rwf->on(error => sub ($rwf, $str) { ... });
 
 Emitted when when the there is an issue with creating, writing or reading
 from the child process.
 
 ## finish
 
-    $rwf->on(finish => sub { my ($fork, $exit_value, $signal) = @_; });
+    $rwf->on(finish => sub ($rwf, $exit_value, $signal) { ... });
 
 Emitted when the child process exit.
 
 ## pty
 
-    $rwf->on(pty => sub { my ($fork, $buf) = @_; });
+    $rwf->on(pty => sub ($rwf, $buf) { ... });
 
 Emitted when the child has written a chunk of data to a pty and ["conduit"](#conduit) has
 "type" set to "pty3".
 
 ## prepare
 
-    $rwf->on(prepare => sub { my ($fork, $fh) = @_; });
+    $rwf->on(prepare => sub ($rwf, $fh) { ... });
 
 Emitted right before the child process is forked. `$fh` can contain the
 example hash below or a subset:
@@ -168,14 +165,14 @@ example hash below or a subset:
 
 ## read
 
-    $rwf->on(read => sub { my ($fork, $buf) = @_; });
+    $rwf->on(read => sub ($rwf, $buf) { ... });
 
 Emitted when the child has written a chunk of data to STDOUT or STDERR, and
 neither "stderr" nor "stdout" is set in the ["conduit"](#conduit).
 
 ## spawn
 
-    $rwf->on(spawn => sub { my ($fork) = @_; });
+    $rwf->on(spawn => sub ($rwf) { ... });
 
 Emitted after `fork()` has been called. Note that the child process might not yet have
 been started. The order of things is impossible to say, but it's something like this:
@@ -200,14 +197,14 @@ See also ["pid"](#pid) for example usage of this event.
 
 ## stderr
 
-    $rwf->on(stderr => sub { my ($fork, $buf) = @_; });
+    $rwf->on(stderr => sub ($rwf, $buf) { ... });
 
 Emitted when the child has written a chunk of data to STDERR and ["conduit"](#conduit)
 has the "stderr" key set to a true value or "type" is set to "pty3".
 
 ## stdout
 
-    $rwf->on(stdout => sub { my ($fork, $buf) = @_; });
+    $rwf->on(stdout => sub ($rwf, $buf) { ... });
 
 Emitted when the child has written a chunk of data to STDOUT and ["conduit"](#conduit)
 has the "stdout" key set to a true value or "type" is set to "pty3".
@@ -217,7 +214,7 @@ has the "stdout" key set to a true value or "type" is set to "pty3".
 ## conduit
 
     $hash = $rwf->conduit;
-    $fork = $rwf->conduit(\%options);
+    $rwf  = $rwf->conduit(\%options);
 
 Used to set the conduit options. Possible values are:
 
@@ -250,7 +247,7 @@ Used to set the conduit options. Possible values are:
 ## ioloop
 
     $ioloop = $rwf->ioloop;
-    $fork = $rwf->ioloop(Mojo::IOLoop->singleton);
+    $rwf    = $rwf->ioloop(Mojo::IOLoop->singleton);
 
 Holds a [Mojo::IOLoop](https://metacpan.org/pod/Mojo%3A%3AIOLoop) object.
 
@@ -266,21 +263,21 @@ the IO loop is started. This means that the code below will not work:
 
 This will work though:
 
-    $rwf->on(fork => sub { my $fork = shift; warn $rwf->pid });
-    $rwf->run("bash", -c => q(echo $YIKES foo bar baz));
+    $rwf->on(fork => sub ($rwf) { warn $rwf->pid });
+    $rwf->run('bash', -c => q(echo $YIKES foo bar baz));
 
 # METHODS
 
 ## close
 
-    $fork = $rwf->close('stdin');
+    $rwf = $rwf->close('stdin');
 
 Close STDIN stream to the child process immediately.
 
 ## run
 
-    $fork = $rwf->run($program, @program_args);
-    $fork = $rwf->run(\&Some::Perl::function, @function_args);
+    $rwf = $rwf->run($program, @program_args);
+    $rwf = $rwf->run(\&Some::Perl::function, @function_args);
 
 Simpler version of ["start"](#start). Can either start an application or run a perl
 function.
@@ -305,7 +302,7 @@ Promise based version of ["run"](#run). The [Mojo::Promise](https://metacpan.org
 
 ## start
 
-    $fork = $rwf->start(\%args);
+    $rwf = $rwf->start(\%args);
 
 Used to fork and exec a child process. `%args` can have:
 
@@ -333,15 +330,15 @@ Used to fork and exec a child process. `%args` can have:
 
 ## write
 
-    $fork = $rwf->write($chunk);
-    $fork = $rwf->write($chunk, $cb);
+    $rwf = $rwf->write($chunk);
+    $rwf = $rwf->write($chunk, $cb);
 
 Used to write data to the child process STDIN. An optional callback will be
 called once the `$chunk` is written.
 
 Example:
 
-    $rwf->write("some data\n", sub { shift->close });
+    $rwf->write("some data\n", sub ($rwf) { $rwf->close });
 
 ## kill
 
