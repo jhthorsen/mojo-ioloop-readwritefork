@@ -25,11 +25,14 @@ sub run_program {
   my @program = @_;
   my $rwf     = Mojo::IOLoop::ReadWriteFork->new->conduit({clone_winsize_from => \*STDIN, type => 'pty3'});
 
+  STDIN->binmode;
   my $stdin = Mojo::IOLoop::Stream->new(\*STDIN);
   $rwf->ioloop->stream($stdin);
-  $stdin->on(read => sub { $rwf->write($_[1]) });
-  $rwf->once(stdout => sub { ReadMode 4 });
+  $stdin->on(error => sub { abort($_[1]) });
+  $stdin->on(read  => sub { $rwf->write($_[1]) });
+  $rwf->once(stdout => sub { ReadMode 5 });
 
+  $rwf->on(error  => sub { abort($_[1]) });
   $rwf->on(pty    => \&write_password);
   $rwf->on(stderr => \&rwf_stderr);
   $rwf->on(stdout => \&rwf_stdout);
