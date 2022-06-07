@@ -117,9 +117,9 @@ sub _start_child {
 
   my $stdout_no = ($args->{stdout} // 1) && fileno($fh->{stdout_write});
   my $stderr_no = ($args->{stderr} // 1) && fileno($fh->{stderr_write} || $fh->{stdout_write});
-  open STDIN,  '<&' . fileno($fh->{stdin_read}) or exit $!;
-  open STDOUT, '>&' . $stdout_no or exit $! if $stdout_no;
-  open STDERR, '>&' . $stderr_no or exit $! if $stderr_no;
+  open STDIN,  '<&' . fileno($fh->{stdin_read}) or die $!;
+  open STDOUT, '>&' . $stdout_no or die $! if $stdout_no;
+  open STDERR, '>&' . $stderr_no or die $! if $stderr_no;
   $stdout_no ? STDOUT->autoflush(1) : STDOUT->close;
   $stderr_no ? STDERR->autoflush(1) : STDERR->close;
 
@@ -142,7 +142,7 @@ sub _start_child {
   }
 
   eval { POSIX::_exit($errno // $!); };
-  exit($errno // $!);
+  die($errno // $!);
 }
 
 sub _start_parent {
@@ -194,6 +194,7 @@ sub _maybe_terminate {
 
   delete $self->{stdin_write};
   delete $self->{stdout_read};
+  delete $self->{stderr_read};
 
   my @errors;
   for my $cb (@{$self->subscribers('close')}, @{$self->subscribers('finish')}) {
