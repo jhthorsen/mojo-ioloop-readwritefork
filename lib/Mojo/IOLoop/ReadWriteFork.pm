@@ -41,12 +41,13 @@ sub run {
 }
 
 sub run_and_capture_p {
-  my $self    = shift;
-  my $asset   = Mojo::Asset::Memory->new(auto_upgrade => 1);
-  my $read_cb = $self->on(read => sub { $asset->add_chunk($_[1]) });
+  my $self       = shift;
+  my $asset      = Mojo::Asset::Memory->new(auto_upgrade => 1);
+  my $read_event = $self->conduit->{stdout} ? 'stdout' : 'read';
+  my $read_cb    = $self->on($read_event => sub { $asset->add_chunk($_[1]) });
   $asset->once(upgrade => sub { $asset = $_[1]; $self->emit(asset => $asset) });
   return $self->emit(asset => $asset)->run_p(@_)->then(sub {$asset})
-    ->finally(sub { $self->unsubscribe(read => $read_cb) });
+    ->finally(sub { $self->unsubscribe($read_event => $read_cb) });
 }
 
 sub run_p {
