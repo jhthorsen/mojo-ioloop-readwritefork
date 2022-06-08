@@ -152,7 +152,7 @@ sub _start_parent {
   @$self{qw(stdin_write stdout_read stderr_read)} = @$fh{qw(stdin_write stdout_read stderr_read)};
   @$self{qw(wait_eof wait_sigchld)}               = (1, 1);
 
-  $fh->{stdout_read}->close_slave if blessed $fh->{stdout_read} and $fh->{stdout_read}->isa('IO::Pty');
+  $fh->{stdin_write}->close_slave if blessed $fh->{stdin_write} and $fh->{stdin_write}->isa('IO::Pty');
   $self->_stream(pty    => $fh->{stdin_write}) if $args->{conduit} eq 'pty3';
   $self->_stream(stderr => $fh->{stderr_read}) if $fh->{stderr_read};
   $self->_stream(stdout => $fh->{stdout_read}) if !$fh->{stderr_read} or $args->{stdout};
