@@ -1,5 +1,3 @@
-
-#!start included /home/jhthorsen/.perlbrew/perls/perl-5.18.2/lib/5.18.2/ExtUtils/MANIFEST.SKIP
 # Avoid version control files.
 \bRCS\b
 \bCVS\b
@@ -55,12 +53,13 @@
 
 # Avoid MYMETA files
 ^MYMETA\.
-#!end included /home/jhthorsen/.perlbrew/perls/perl-5.18.2/lib/5.18.2/ExtUtils/MANIFEST.SKIP
 
 \.swp$
 ^local/
 ^MANIFEST\.SKIP
 ^README\.pod
-^.readwritefork_ssh
-^.readwritefork_ssh_password
-^.sudo_password
+^\.readwritefork_ssh
+^\.readwritefork_ssh_password
+^\.sudo_password
+^\.github
+^\.pls_cache
