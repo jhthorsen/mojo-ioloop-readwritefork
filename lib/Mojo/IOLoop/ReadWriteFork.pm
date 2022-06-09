@@ -44,6 +44,14 @@ sub close {
   return $self;
 }
 
+sub kill {
+  my $self   = shift;
+  my $signal = shift // 15;
+  return undef unless my $pid = $self->{pid};
+  $self->_d("kill $signal $pid") if DEBUG;
+  return kill $signal, $pid;
+}
+
 sub run {
   my $args = ref $_[-1] eq 'HASH' ? pop : {};
   my ($self, $program, @program_args) = @_;
@@ -82,6 +90,54 @@ sub start {
   $args->{program} or die 'program is required input';
   $self->ioloop->next_tick(sub { $self->_start($args) });
   return $self;
+}
+
+sub write {
+  my ($self, $chunk, $cb) = @_;
+  $self->once(drain => $cb) if $cb;
+  $self->{stdin_buffer} .= $chunk;
+  $self->_write if $self->{stdin_write};
+  return $self;
+}
+
+sub _d { warn "-- [$_[0]->{pid}] $_[1]\n" }
+
+sub _error {
+  return if $! == EAGAIN || $! == EINTR || $! == EWOULDBLOCK;
+  return $_[0]->kill if $! == ECONNRESET || $! == EPIPE;
+  return $_[0]->emit(error => $!)->kill;
+}
+
+sub _maybe_terminate {
+  my ($self, $pending_event) = @_;
+  delete $self->{$pending_event};
+  return if $self->{wait_eof} or $self->{wait_sigchld};
+
+  delete $self->{stdin_write};
+  delete $self->{stdout_read};
+  delete $self->{stderr_read};
+
+  my @errors;
+  for my $cb (@{$self->subscribers('close')}, @{$self->subscribers('finish')}) {
+    push @errors, $@ unless eval { $self->$cb(@$self{qw(exit_value signal)}); 1 };
+  }
+
+  $self->emit(error => $_) for @errors;
+}
+
+sub _pipe {
+  my $self = shift;
+  pipe my $read, my $write or return $self->emit(error => "pipe: $!");
+  $write->autoflush(1);
+  return $read, $write;
+}
+
+sub _sigchld {
+  my ($self, $status, $pid) = @_;
+  my ($exit_value, $signal) = ($status >> 8, $status & 127);
+  $self->_d("Exit exit_value=$exit_value, signal=$signal") if DEBUG;
+  @$self{qw(exit_value signal)} = ($exit_value, $signal);
+  $self->_maybe_terminate('wait_sigchld');
 }
 
 sub _start {
@@ -171,62 +227,6 @@ sub _start_parent {
   $self->emit('fork');    # LEGACY
   $self->emit('spawn');
   $self->_write;
-}
-
-sub write {
-  my ($self, $chunk, $cb) = @_;
-  $self->once(drain => $cb) if $cb;
-  $self->{stdin_buffer} .= $chunk;
-  $self->_write if $self->{stdin_write};
-  return $self;
-}
-
-sub kill {
-  my $self   = shift;
-  my $signal = shift // 15;
-  return undef unless my $pid = $self->{pid};
-  $self->_d("kill $signal $pid") if DEBUG;
-  return kill $signal, $pid;
-}
-
-sub _error {
-  return if $! == EAGAIN || $! == EINTR || $! == EWOULDBLOCK;
-  return $_[0]->kill if $! == ECONNRESET || $! == EPIPE;
-  return $_[0]->emit(error => $!)->kill;
-}
-
-sub _d { warn "-- [$_[0]->{pid}] $_[1]\n" }
-
-sub _maybe_terminate {
-  my ($self, $pending_event) = @_;
-  delete $self->{$pending_event};
-  return if $self->{wait_eof} or $self->{wait_sigchld};
-
-  delete $self->{stdin_write};
-  delete $self->{stdout_read};
-  delete $self->{stderr_read};
-
-  my @errors;
-  for my $cb (@{$self->subscribers('close')}, @{$self->subscribers('finish')}) {
-    push @errors, $@ unless eval { $self->$cb(@$self{qw(exit_value signal)}); 1 };
-  }
-
-  $self->emit(error => $_) for @errors;
-}
-
-sub _pipe {
-  my $self = shift;
-  pipe my $read, my $write or return $self->emit(error => "pipe: $!");
-  $write->autoflush(1);
-  return $read, $write;
-}
-
-sub _sigchld {
-  my ($self, $status, $pid) = @_;
-  my ($exit_value, $signal) = ($status >> 8, $status & 127);
-  $self->_d("Exit exit_value=$exit_value, signal=$signal") if DEBUG;
-  @$self{qw(exit_value signal)} = ($exit_value, $signal);
-  $self->_maybe_terminate('wait_sigchld');
 }
 
 sub _stream {
@@ -416,13 +416,6 @@ from the child process.
 
 Emitted when the child process exit.
 
-=head2 pty
-
-  $rwf->on(pty => sub ($rwf, $buf) { ... });
-
-Emitted when the child has written a chunk of data to a pty and L</conduit> has
-"type" set to "pty3".
-
 =head2 prepare
 
   $rwf->on(prepare => sub ($rwf, $fh) { ... });
@@ -440,6 +433,13 @@ example hash below or a subset:
     stdout_read  => $stderr_fh_r,
     stdout_write => $pipe_fh_w,
   };
+
+=head2 pty
+
+  $rwf->on(pty => sub ($rwf, $buf) { ... });
+
+Emitted when the child has written a chunk of data to a pty and L</conduit> has
+"type" set to "pty3".
 
 =head2 read
 
@@ -556,6 +556,13 @@ This will work though:
 
 Close STDIN stream to the child process immediately.
 
+=head2 kill
+
+  $bool = $rwf->kill;
+  $bool = $rwf->kill(15); # default
+
+Used to signal the child.
+
 =head2 run
 
   $rwf = $rwf->run($program, @program_args);
@@ -625,13 +632,6 @@ called once the C<$chunk> is written.
 Example:
 
   $rwf->write("some data\n", sub ($rwf) { $rwf->close });
-
-=head2 kill
-
-  $bool = $rwf->kill;
-  $bool = $rwf->kill(15); # default
-
-Used to signal the child.
 
 =head1 SEE ALSO
 
