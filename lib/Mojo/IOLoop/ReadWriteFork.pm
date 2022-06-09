@@ -28,10 +28,20 @@ has ioloop => sub { Mojo::IOLoop->singleton }, weak => 1;
 
 sub close {
   my $self = shift;
-  my $what = $_[0] eq 'stdout' ? 'stdout_read' : 'stdin_write';    # stdout_read is EXPERIMENTAL
-  my $fh   = delete $self->{$what} or return $self;
-  $fh->close or $self->emit(error => $!);
-  $self;
+  my $fh   = delete $self->{stdin_write} or return $self;
+
+  if (blessed $fh and $fh->isa('IO::Pty')) {
+    for my $name (qw(pty stdout)) {
+      my $stream = $self->{stream}{$name} && $self->ioloop->stream($self->{stream}{$name});
+      $stream->close if $stream and $stream->handle eq $fh;
+    }
+  }
+
+  if (!$fh->close) {
+    $self->emit(error => $!);
+  }
+
+  return $self;
 }
 
 sub run {
@@ -153,9 +163,9 @@ sub _start_parent {
   @$self{qw(wait_eof wait_sigchld)}               = (1, 1);
 
   $fh->{stdin_write}->close_slave if blessed $fh->{stdin_write} and $fh->{stdin_write}->isa('IO::Pty');
-  $self->_stream(pty    => $fh->{stdin_write}) if $args->{conduit} eq 'pty3';
-  $self->_stream(stderr => $fh->{stderr_read}) if $fh->{stderr_read};
-  $self->_stream(stdout => $fh->{stdout_read}) if !$fh->{stderr_read} or $args->{stdout};
+  $self->{stream}{pty}    = $self->_stream(pty    => $fh->{stdin_write}) if $args->{conduit} eq 'pty3';
+  $self->{stream}{stderr} = $self->_stream(stderr => $fh->{stderr_read}) if $fh->{stderr_read};
+  $self->{stream}{stdout} = $self->_stream(stdout => $fh->{stdout_read}) if !$fh->{stderr_read} or $args->{stdout};
 
   $SIGCHLD->waitpid($self->{pid} => sub { $self->_sigchld(@_) });
   $self->emit('fork');    # LEGACY
@@ -232,7 +242,8 @@ sub _stream {
   $stream->on(error => sub { $! != EIO && $self->emit(error => "Read error: $_[1]") });
   $stream->on(close => sub { $self->_maybe_terminate('wait_eof') });
   $stream->on(read  => $read_cb);
-  $self->ioloop->stream($stream);
+
+  return $self->ioloop->stream($stream);
 }
 
 sub _write {
