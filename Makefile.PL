@@ -10,9 +10,9 @@ my %WriteMakefileArgs = (
   EXE_FILES      => [qw()],
   OBJECT         => '',
   BUILD_REQUIRES => {},
-  TEST_REQUIRES  => {'Test::More' => '0.88'},
-  PREREQ_PM      => {'IO::Pty'    => '1.16', 'Mojolicious' => '8.25'},
-  META_MERGE     => {
+  TEST_REQUIRES => {'Test::More' => '0.88'},
+  PREREQ_PM     => {'IO::Pty'    => '1.16', 'IO::Socket::IP' => '0.37', 'Mojolicious' => '8.25', 'Sub::Util' => '1.41'},
+  META_MERGE    => {
     'dynamic_config' => 0,
     'meta-spec'      => {version => 2},
     'resources'      => {
