@@ -9,7 +9,7 @@ jobs:
         - '5.16'
         - '5.20'
         - '5.26'
-        - '5.30'
+        - '5.34'
     container:
       image: perl:${{matrix.perl-version}}
     steps:
@@ -19,8 +19,8 @@ jobs:
     - name: Install dependencies
       run: |
         cpanm -n EV~"!= 4.28"
-        cpanm -n https://github.com/mojolicious/mojo/archive/refs/tags/v8.14.tar.gz
-        cpanm -n Test::Pod Test::Pod::Coverage Minion
+        cpanm -n https://github.com/mojolicious/mojo/archive/refs/tags/v8.25.tar.gz
+        cpanm -n Test::Pod Test::Pod::Coverage
         cpanm -n --installdeps .
     - name: Run perl tests
       run: prove -l
